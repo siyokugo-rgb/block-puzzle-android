@@ -13,6 +13,7 @@ Game systems (Board / Piece / Score / Ads / etc.) are **not** implemented yet.
 - Android Gradle Build
 - Phase 0-A.1: AGP **8.10.1** + Gradle Wrapper **8.11.1** + compileSdk/targetSdk **36** + minSdk **24**
 - Phase 0-B: GUT **9.7.1** (`v9.7.1` / Godot 4.7.x)
+- Phase 0-C: Android App Bundle (`.aab`) export
 
 ## Phase 0-B: GUT headless tests
 
@@ -36,6 +37,20 @@ Exit code: `0` = all pass, non-zero = failure.
 Editor: enable plugin `Gut` (already in `project.godot`), open GUT panel, Run.
 
 Minimal test: `tests/test_phase0b.gd` (`1 + 1 == 2`).
+
+
+## Debug AAB (Phase 0-C)
+
+```bash
+godot --headless --path . --import
+godot --headless --path . --install-android-build-template
+./tooling/android-gradle/apply_overlay.sh
+godot --headless --path . --export-debug "Android AAB" build/android/phase0c-debug.aab
+```
+
+Uses export preset `Android AAB` (`gradle_build/export_format=1`).  
+Signing for this spike: Godot/Gradle **debug** keystore only (not a Play upload key).  
+Do not commit `.aab` / keystore / passwords.
 
 ## Debug APK (Phase 0-A)
 
