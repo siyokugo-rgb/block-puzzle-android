@@ -1,0 +1,37 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+---  GUT  ---
+[1m[INFO]:  [0musing [/home/ubuntu/.local/share/godot/app_userdata/Phase 0 Android Spike] for temporary output.
+Godot version:  4.7.2
+GUT version:  9.7.1
+[4m
+
+res://tests/test_phase0b.gd
+[0m* test_one_plus_one_equals_two
+[1m1/1 passed.
+[0m[4m
+
+res://tests/test_phase0d.gd
+[0m* test_phase0d_google_sample_app_id_only
+* test_phase0d_anchored_adaptive_banner_test_unit
+* test_phase0d_admob_plugin_files_present
+[1m3/3 passed.
+[0m
+
+
+
+[33m==============================================
+[0m[33m= Run Summary
+[0m[33m==============================================
+[0m
+Totals
+------
+Scripts               2
+Tests                 4
+Passing Tests         4
+Asserts               8
+Time              0.446s
+
+
+[32m---- All tests passed! ----
+[0m
