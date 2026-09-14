@@ -1,4 +1,4 @@
-[gd_scene load_steps=3 format=3 uid="uid://phase0d_main_scene"]
+[gd_scene load_steps=3 format=3 uid="uid://phase0e_main_scene"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://addons/AdmobPlugin/Admob.gd" id="2_admob"]
@@ -16,24 +16,36 @@ script = ExtResource("1_main")
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_left = 24.0
-offset_top = 48.0
-offset_right = -24.0
-offset_bottom = 96.0
-theme_override_font_sizes/font_size = 28
-text = "Phase 0-D AdMob Test Banner"
+offset_left = 16.0
+offset_top = 24.0
+offset_right = -16.0
+offset_bottom = 64.0
+theme_override_font_sizes/font_size = 24
+text = "Phase 0-E UMP Consent Spike"
 horizontal_alignment = 1
 
 [node name="Status" type="Label" parent="."]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_left = 24.0
-offset_top = 110.0
-offset_right = -24.0
-offset_bottom = 190.0
-theme_override_font_sizes/font_size = 18
+offset_left = 16.0
+offset_top = 68.0
+offset_right = -16.0
+offset_bottom = 130.0
+theme_override_font_sizes/font_size = 16
 text = "Status: idle"
+autowrap_mode = 3
+
+[node name="StatePanel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 16.0
+offset_top = 134.0
+offset_right = -16.0
+offset_bottom = 280.0
+theme_override_font_sizes/font_size = 14
+text = "state"
 autowrap_mode = 3
 
 [node name="Buttons" type="VBoxContainer" parent="."]
@@ -43,27 +55,51 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -200.0
-offset_top = -160.0
-offset_right = 200.0
-offset_bottom = 120.0
+offset_left = -260.0
+offset_top = -180.0
+offset_right = 260.0
+offset_bottom = 220.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 8
 
-[node name="InitButton" type="Button" parent="Buttons"]
+[node name="GeoRow" type="HBoxContainer" parent="Buttons"]
 layout_mode = 2
-text = "1) Initialize Ads (Spike)"
+theme_override_constants/separation = 8
 
-[node name="LoadButton" type="Button" parent="Buttons"]
+[node name="GeoLabel" type="Label" parent="Buttons/GeoRow"]
+layout_mode = 2
+text = "Debug geo:"
+
+[node name="GeoOption" type="OptionButton" parent="Buttons/GeoRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="DeviceHashEdit" type="LineEdit" parent="Buttons"]
+layout_mode = 2
+placeholder_text = "UMP test device hash (runtime only, not saved)"
+
+[node name="UpdateConsentButton" type="Button" parent="Buttons"]
+layout_mode = 2
+text = "1) Update Consent Info"
+
+[node name="ShowFormButton" type="Button" parent="Buttons"]
 layout_mode = 2
 disabled = true
-text = "2) Load Test Banner"
+text = "2) Load/Show Consent Form"
 
-[node name="ShowButton" type="Button" parent="Buttons"]
+[node name="ResetConsentButton" type="Button" parent="Buttons"]
+layout_mode = 2
+text = "3) Reset Consent (retest)"
+
+[node name="RequestBannerButton" type="Button" parent="Buttons"]
 layout_mode = 2
 disabled = true
-text = "3) Show Test Banner"
+text = "4) Request Test Banner (if allowed)"
+
+[node name="PrivacyProbeButton" type="Button" parent="Buttons"]
+layout_mode = 2
+text = "Probe Privacy Options API"
 
 [node name="TapButton" type="Button" parent="Buttons"]
 layout_mode = 2
@@ -73,12 +109,12 @@ text = "Tap (UI alive check)"
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_left = 24.0
-offset_top = 820.0
-offset_right = -24.0
-offset_bottom = 860.0
-theme_override_font_sizes/font_size = 18
-text = "UI taps while ads load/show: 0"
+offset_left = 16.0
+offset_top = 980.0
+offset_right = -16.0
+offset_bottom = 1010.0
+theme_override_font_sizes/font_size = 16
+text = "UI taps: 0"
 horizontal_alignment = 1
 
 [node name="Log" type="Label" parent="."]
@@ -87,11 +123,11 @@ anchors_preset = 12
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 16.0
-offset_top = -280.0
-offset_right = -16.0
-offset_bottom = -24.0
-theme_override_font_sizes/font_size = 14
+offset_left = 12.0
+offset_top = -250.0
+offset_right = -12.0
+offset_bottom = -16.0
+theme_override_font_sizes/font_size = 12
 text = ""
 autowrap_mode = 3
 
@@ -105,8 +141,12 @@ android_real_application_id = "ca-app-pub-3940256099942544~3347511713"
 android_debug_banner_id = "ca-app-pub-3940256099942544/9214589741"
 android_real_banner_id = ""
 enabled_networks = 0
+debug_geography = -1
+test_device_hashed_ids = Array[String]([])
 
-[connection signal="pressed" from="Buttons/InitButton" to="." method="_on_init_button_pressed"]
-[connection signal="pressed" from="Buttons/LoadButton" to="." method="_on_load_button_pressed"]
-[connection signal="pressed" from="Buttons/ShowButton" to="." method="_on_show_button_pressed"]
+[connection signal="pressed" from="Buttons/UpdateConsentButton" to="." method="_on_update_consent_button_pressed"]
+[connection signal="pressed" from="Buttons/ShowFormButton" to="." method="_on_show_form_button_pressed"]
+[connection signal="pressed" from="Buttons/ResetConsentButton" to="." method="_on_reset_consent_button_pressed"]
+[connection signal="pressed" from="Buttons/RequestBannerButton" to="." method="_on_request_banner_button_pressed"]
+[connection signal="pressed" from="Buttons/PrivacyProbeButton" to="." method="_on_privacy_probe_button_pressed"]
 [connection signal="pressed" from="Buttons/TapButton" to="." method="_on_tap_button_pressed"]
