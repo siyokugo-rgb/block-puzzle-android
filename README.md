@@ -1,8 +1,21 @@
 # block-puzzle-android
 
-Phase 0 spike for Godot 4.7.2 Android + automated GDScript tests + AdMob test banner + UMP consent gate.
+Phase 0 production baseline for Godot 4.7.2 Android + GUT + AdMob/UMP.
 
-Game systems (Board / Piece / Score / production Ads / etc.) are **not** implemented yet.
+Game systems (Board / Piece / Score / Adaptive Difficulty / etc.) are **not** implemented yet.
+
+## Status
+
+| Phase | Result |
+| --- | --- |
+| 0-A Android APK | COMPLETE |
+| 0-B GUT | COMPLETE |
+| 0-C AAB | COMPLETE |
+| 0-D AdMob test banner | COMPLETE |
+| 0-E UMP consent gate | COMPLETE — Android reference-device scenarios A–E PASS |
+| 0-F Production baseline closeout | **COMPLETE** |
+
+Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
 ## Versions
 
@@ -11,88 +24,73 @@ Game systems (Board / Piece / Score / production Ads / etc.) are **not** impleme
 - Compatibility Renderer (`gl_compatibility`)
 - Portrait
 - Android Gradle Build
-- Phase 0-A.1: AGP **8.10.1** + Gradle Wrapper **8.11.1** + compileSdk/targetSdk **36** + minSdk **24**
-- Phase 0-B: GUT **9.7.1** (`v9.7.1` / Godot 4.7.x)
-- Phase 0-C: Android App Bundle (`.aab`) export
-- Phase 0-D: AdMob Test Banner via `godot-sdk-integrations/godot-admob` **v7.0** (Google test IDs only)
-- Phase 0-E: UMP consent flow / ads-request gate spike (fail-closed; see API audit)
+- AGP **8.10.1** + Gradle Wrapper **8.11.1** + compileSdk/targetSdk **36** + minSdk **24**
+- arm64-v8a
+- GUT **9.7.1**
+- AdMob plugin `godot-sdk-integrations/godot-admob` **v7.0** + Phase 0-E.1 UMP native patch
 
-## Phase 0-E: UMP consent gate (Technical Spike)
+## Production baseline (Phase 0-F)
 
-API audit: `tooling/admob/UMP_API_AUDIT.md`  
-Native patch reproducibility: `tooling/admob/native-patch/README.md`
+| Piece | Path |
+| --- | --- |
+| Default main scene | `scenes/main.tscn` + `scripts/main.gd` |
+| Shared ads/consent service | `scripts/ads/ads_consent_service.gd` |
+| Ad unit config | `scripts/ads/ads_config.gd` |
+| Consent gate helpers | `scripts/consent_gate.gd` |
+| Phase 0-E regression spike | `scenes/regression/phase0e_ump_spike.tscn` |
 
-- Consent update / status / form load-show / reset: available in v7.0
-- Phase 0-E.1 patch adds: `can_request_ads`, privacy-options status/form + dismiss signal
-- Ads requested only when native `canRequestAds()` is true after an update attempt completes
-- `SPIKE_AUTO_START_ADS=false`
-- UMP test device hash: runtime LineEdit only — never committed
-- Google test App ID / Banner ID only
-- Phase 0-E overall remains **FIX FIRST / not COMPLETE** until Xperia verification
+### Boot policy
 
-## Phase 0-D: AdMob Test Banner (Technical Spike)
+1. After `main._ready()`, production builds `ConsentRequestParameters` with `set_is_real(true)` (no debug geography, no UMP test-device hash) and calls `AdsConsentService.begin_consent_update()` automatically.
+2. Duplicate in-flight consent updates are ignored.
+3. If a UMP form is required, the service loads/shows it as before.
+4. On update success **or** failure, ads follow native `canRequestAds` (SoT) after the update completes.
+5. When `auto_request_banner` is enabled (production main), after an allowed decision the service requests a banner **once** — only if production banner unit IDs are configured in `AdsConfig`.
+6. Phase 0-F keeps production IDs **empty**, so no banner request is issued yet.
 
-Provenance: `tooling/admob/PROVENANCE.md`  
-Fallback comparison only: `tooling/admob/FALLBACK_COMPARISON.md`
+### Production UI
 
-- Sample App ID: `ca-app-pub-3940256099942544~3347511713`
-- Anchored Adaptive Banner test unit: `ca-app-pub-3940256099942544/9214589741`
-- Production AdMob IDs are forbidden
-- Xperia runtime COMPLETE on Phase 0-D; Phase 0-E owns consent gate.
+- No **Update Consent** button (auto on launch)
+- No **Request Banner** button (auto when allowed + IDs set)
+- **Privacy Options** remains when status is `REQUIRED`
+
+### Test ID separation
+
+| ID role | Source | Notes |
+| --- | --- | --- |
+| AndroidManifest `APPLICATION_ID` | `addons/AdmobPlugin/android_export.cfg` | Required for debug APK/AAB export. Plugin prefers this file over scene Admob node fields when present. Uses Google sample App ID with `is_real=false` for Phase 0 debug builds. |
+| Banner **unit** ID for requests | `AdsConfig` (`scripts/ads/ads_config.gd`) | Production constants empty → no request. Google test banner unit is used only when `use_test_ad_units=true` (regression spike). |
+| Scene Admob node app/banner fields on production main | Cleared (`""`) | Not required for Manifest App ID (export cfg wins). Not used by `AdsConsentService` banner loads (unit ID comes from `AdsConfig`). |
+
+Google sample App/Banner IDs on the **Admob node** and manual A–E controls stay on the **regression spike only**. Do not describe Manifest App ID as “regression only” — debug export still needs `android_export.cfg`.
+
+## Phase 0-E regression spike
+
+Keep using the regression scene for future AdMob/UMP SDK re-checks (scenarios A–E):
+
+`scenes/regression/phase0e_ump_spike.tscn`
+
+It still includes debug geography, runtime-only UMP test-device hash, and manual Update Consent / Request Banner / Reset / Privacy Options buttons.
+
+Native patch notes: `tooling/admob/native-patch/README.md`  
+API audit: `tooling/admob/UMP_API_AUDIT.md`
+
+## GUT
 
 ```bash
-godot --headless --path . --import
-godot --headless --path . --install-android-build-template
-./tooling/android-gradle/apply_overlay.sh
-godot --headless --path . --export-debug Android build/android/phase0d-debug.apk
-```
-
-Known upstream issue: [#124](https://github.com/godot-sdk-integrations/godot-admob/issues/124) (v7.0 init on Godot 4.7). Device verification required.
-
-## Phase 0-B: GUT headless tests
-
-Provenance: `tooling/gut/PROVENANCE.md`  
-Upstream: https://github.com/bitwes/Gut/releases/tag/v9.7.1  
-Compatibility: upstream README lists GUT 9.7.1 for Godot **4.7.x**.
-
-```bash
-# requires Godot 4.7.2 on PATH (or set GODOT_BIN)
 ./tooling/gut/run_tests.sh
 ```
 
-Equivalent:
+Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`.
 
-```bash
-godot --headless --path . -s addons/gut/gut_cmdln.gd -gconfig=res://.gutconfig.json -gexit -glog=1
-```
-
-Exit code: `0` = all pass, non-zero = failure.
-
-Editor: enable plugin `Gut` (already in `project.godot`), open GUT panel, Run.
-
-Minimal tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`.
-
-## Debug AAB (Phase 0-C)
+## Debug APK / AAB
 
 ```bash
 godot --headless --path . --import
 godot --headless --path . --install-android-build-template
 ./tooling/android-gradle/apply_overlay.sh
+godot --headless --path . --export-debug Android build/android/phase0f-debug.apk
 godot --headless --path . --export-debug "Android AAB" build/android/phase0c-debug.aab
 ```
 
-Uses export preset `Android AAB` (`gradle_build/export_format=1`).  
-Signing for this spike: Godot/Gradle **debug** keystore only (not a Play upload key).  
-Do not commit `.aab` / keystore / passwords.
-
-## Debug APK (Phase 0-A / 0-D)
-
-```bash
-godot --headless --path . --import
-godot --headless --path . --install-android-build-template
-./tooling/android-gradle/apply_overlay.sh
-godot --headless --path . --export-debug Android build/android/phase0e-debug.apk
-```
-
-`android/build/` is generated and gitignored. AGP pin lives in `tooling/android-gradle/`.  
-Do not commit keystore / password / token / APK / AAB / production AdMob IDs / UMP device hashes.
+Do not commit APK / AAB / keystores / production AdMob IDs / UMP device hashes.
