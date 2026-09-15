@@ -50,12 +50,12 @@ The script:
 
 ## Expected AAR SHA-256 (this workspace build)
 
-Recorded after successful Cloud Agent rebuild on 2026-09-15:
+Recorded after successful Cloud Agent rebuild on 2026-09-15 (Scenario A FIX FIRST):
 
 | Artifact | SHA-256 |
 | --- | --- |
-| `addons/AdmobPlugin/bin/debug/AdmobPlugin-debug.aar` | `c36762992d6ddc8a6a16461f650633f4b48e36f8bcdc40680f97766d5357b12c` |
-| `addons/AdmobPlugin/bin/release/AdmobPlugin-release.aar` | `a975afc114fba1e2dbe8cc4681f77eac1fcd95eda8b0bda693a047e0601e03d9` |
+| `addons/AdmobPlugin/bin/debug/AdmobPlugin-debug.aar` | `d0489086af10646029655c368faaf6c538551bb0b0defd49c0978152e7448a91` |
+| `addons/AdmobPlugin/bin/release/AdmobPlugin-release.aar` | `97af716412b28596961da8a333a703327ec4d0e53bb2fa3cdcef44921555df77` |
 
 If digests differ after a clean rebuild on the same SHA+patch, stop and investigate (toolchain drift / unclean tree).
 
@@ -65,11 +65,14 @@ Methods (`@UsedByGodot`):
 
 - `boolean can_request_ads()`
 - `String get_privacy_options_requirement_status()` → `UNKNOWN` / `NOT_REQUIRED` / `REQUIRED`
+- `Dictionary get_ump_consent_snapshot()` → atomic native diagnostic snapshot
 - `void show_privacy_options_form()`
 
 Signal:
 
 - `privacy_options_form_dismissed` (`Dictionary` FormError payload; empty message/code=0 on normal dismiss)
+
+On `requestConsentInfoUpdate` success/failure, native logs the same snapshot **before** emitting Godot signals.
 
 ## GDScript wrappers (repo)
 
@@ -77,6 +80,7 @@ In `addons/AdmobPlugin/`:
 
 - `Admob.can_request_ads() -> bool`
 - `Admob.get_privacy_options_requirement_status() -> PrivacyOptionsRequirementStatus`
+- `Admob.get_ump_consent_snapshot() -> Dictionary`
 - `Admob.show_privacy_options_form()`
 - signal `privacy_options_form_dismissed(error_data: FormError)`
 

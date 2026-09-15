@@ -83,6 +83,14 @@ func _selected_debug_geography() -> ConsentRequestParameters.DebugGeography:
 	return ConsentRequestParameters.DebugGeography[key]
 
 
+func _debug_geography_name(value: ConsentRequestParameters.DebugGeography) -> String:
+	# Map by enum VALUE, never by keys()[numeric] (OTHER=4 is not keys index 4).
+	for key in ConsentRequestParameters.DebugGeography.keys():
+		if ConsentRequestParameters.DebugGeography[key] == value:
+			return str(key)
+	return "INVALID(%s)" % str(value)
+
+
 func _on_update_consent_button_pressed() -> void:
 	_request_consent_update()
 
@@ -157,7 +165,13 @@ func _request_consent_update() -> void:
 
 	var params := ConsentRequestParameters.new()
 	params.set_is_real(false)
-	params.set_debug_geography(_selected_debug_geography())
+	var ui_label: String = _geo_option.get_item_text(_geo_option.selected)
+	var geo_value: ConsentRequestParameters.DebugGeography = _selected_debug_geography()
+	var geo_name := _debug_geography_name(geo_value)
+	params.set_debug_geography(geo_value)
+	var raw_geo: Variant = params.get_raw_data().get(
+		ConsentRequestParameters.DEBUG_GEOGRAPHY_PROPERTY, null
+	)
 	var device_hash := _device_hash_edit.text.strip_edges()
 	if not device_hash.is_empty():
 		params.add_test_device_hashed_id(device_hash)
@@ -167,8 +181,8 @@ func _request_consent_update() -> void:
 
 	_append_log(
 		(
-			"update_consent_info geo=%s is_real=false"
-			% ConsentRequestParameters.DebugGeography.keys()[_selected_debug_geography()]
+			"update_consent_info is_real=false ui_label=%s gdscript_enum=%s raw_params=%s label=%s"
+			% [ui_label, str(int(geo_value)), str(raw_geo), geo_name]
 		)
 	)
 	_admob.update_consent_info(params)
@@ -306,6 +320,23 @@ func _on_banner_ad_impression(ad_info: AdInfo) -> void:
 
 
 func _apply_ump_snapshot(note: String) -> void:
+	var native_snapshot: Dictionary = {}
+	if Engine.has_singleton("AdmobPlugin"):
+		native_snapshot = _admob.get_ump_consent_snapshot()
+		if not native_snapshot.is_empty():
+			_append_log(
+				(
+					"native_snapshot consent=%s(%s) can_request_ads=%s privacy=%s form=%s"
+					% [
+						str(native_snapshot.get("consent_status", "?")),
+						str(native_snapshot.get("consent_status_code", "?")),
+						str(native_snapshot.get("can_request_ads", "?")),
+						str(native_snapshot.get("privacy_options_requirement_status", "?")),
+						str(native_snapshot.get("is_consent_form_available", "?")),
+					]
+				)
+			)
+
 	_consent_status_text = _read_consent_status_text()
 	_form_available = _admob.is_consent_form_available()
 	_can_request_ads = false
@@ -313,6 +344,26 @@ func _apply_ump_snapshot(note: String) -> void:
 		_can_request_ads = _admob.can_request_ads()
 	var privacy := _admob.get_privacy_options_requirement_status()
 	_privacy_status_text = privacy.to_status_string() if privacy else "UNKNOWN"
+
+	if not native_snapshot.is_empty():
+		var native_can := bool(native_snapshot.get("can_request_ads", false))
+		var native_status := str(native_snapshot.get("consent_status", ""))
+		var native_privacy := str(native_snapshot.get("privacy_options_requirement_status", ""))
+		if native_can != _can_request_ads or native_status != _consent_status_text or native_privacy != _privacy_status_text:
+			_append_log(
+				(
+					"BRIDGE_MISMATCH native(can=%s status=%s privacy=%s) gdscript(can=%s status=%s privacy=%s)"
+					% [
+						str(native_can),
+						native_status,
+						native_privacy,
+						str(_can_request_ads),
+						_consent_status_text,
+						_privacy_status_text,
+					]
+				)
+			)
+
 	_ads_decision = ConsentGate.evaluate(_consent_update_completed, _can_request_ads)
 	_request_banner_button.disabled = (
 		(not ConsentGate.is_ads_allowed(_ads_decision)) or _banner_requested

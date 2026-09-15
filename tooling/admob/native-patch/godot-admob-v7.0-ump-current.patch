@@ -1,5 +1,5 @@
 diff --git a/android/src/main/java/org/godotengine/plugin/admob/AdmobPlugin.java b/android/src/main/java/org/godotengine/plugin/admob/AdmobPlugin.java
-index a9be132..7473eaa 100644
+index a9be132..65de58c 100644
 --- a/android/src/main/java/org/godotengine/plugin/admob/AdmobPlugin.java
 +++ b/android/src/main/java/org/godotengine/plugin/admob/AdmobPlugin.java
 @@ -123,6 +123,7 @@ public class AdmobPlugin extends GodotPlugin {
@@ -19,13 +19,40 @@ index a9be132..7473eaa 100644
  		return signals;
  	}
  
-@@ -1026,6 +1029,38 @@ public class AdmobPlugin extends GodotPlugin {
+@@ -1003,16 +1006,24 @@ public class AdmobPlugin extends GodotPlugin {
+ 	@UsedByGodot
+ 	public void update_consent_info(Dictionary consentRequestParameters) {
+ 		ConsentConfiguration consentConfig = new ConsentConfiguration(consentRequestParameters);
+-		Log.d(LOG_TAG, "update_consent_info(" + consentConfig.toString() + ")");
++		Object debugGeographyObj = consentRequestParameters.get("debug_geography");
++		Log.i(LOG_TAG, String.format(
++				"update_consent_info native_debug_geography_numeric=%s type=%s config=%s",
++				debugGeographyObj,
++				debugGeographyObj != null ? debugGeographyObj.getClass().getName() : "null",
++				consentConfig.toString()));
+ 		ConsentInformation consentInformation = UserMessagingPlatform.getConsentInformation(activity);
+ 
+ 		consentInformation.requestConsentInfoUpdate(
+ 				activity,
+ 				consentConfig.createConsentRequestParameters(activity),
+ 				(ConsentInformation.OnConsentInfoUpdateSuccessListener) () -> {
++					// Snapshot from the same ConsentInformation instance before Godot bridge.
++					logUmpConsentSnapshot("update_success_pre_emit", consentInformation);
+ 					emitSignal(SIGNAL_CONSENT_INFO_UPDATED);
+ 				},
+ 				(ConsentInformation.OnConsentInfoUpdateFailureListener) requestConsentError -> {
++					logUmpConsentSnapshot("update_failure_pre_emit", consentInformation);
+ 					emitSignal(SIGNAL_CONSENT_INFO_UPDATE_FAILED, GodotConverter.convert(requestConsentError));
+ 					Log.w(LOG_TAG, String.format("%s: %s", requestConsentError.getErrorCode(),
+ 							requestConsentError.getMessage()));
+@@ -1026,6 +1037,88 @@ public class AdmobPlugin extends GodotPlugin {
  		UserMessagingPlatform.getConsentInformation(activity).reset();
  	}
  
 +	@UsedByGodot
 +	public boolean can_request_ads() {
-+		boolean canRequestAds = UserMessagingPlatform.getConsentInformation(activity).canRequestAds();
++		ConsentInformation consentInformation = UserMessagingPlatform.getConsentInformation(activity);
++		boolean canRequestAds = consentInformation.canRequestAds();
 +		Log.d(LOG_TAG, String.format("can_request_ads(): %s", canRequestAds));
 +		return canRequestAds;
 +	}
@@ -35,11 +62,20 @@ index a9be132..7473eaa 100644
 +		ConsentInformation.PrivacyOptionsRequirementStatus status =
 +				UserMessagingPlatform.getConsentInformation(activity).getPrivacyOptionsRequirementStatus();
 +		Log.d(LOG_TAG, String.format("get_privacy_options_requirement_status(): %s", status));
-+		return switch (status) {
-+			case REQUIRED -> "REQUIRED";
-+			case NOT_REQUIRED -> "NOT_REQUIRED";
-+			default -> "UNKNOWN";
-+		};
++		return privacyOptionsRequirementStatusToString(status);
++	}
++
++	/**
++	 * Phase 0-E diagnostic: atomically read UMP fields from the same ConsentInformation instance.
++	 * Keys: consent_status_code, consent_status, can_request_ads,
++	 * privacy_options_requirement_status, is_consent_form_available.
++	 */
++	@UsedByGodot
++	public Dictionary get_ump_consent_snapshot() {
++		ConsentInformation consentInformation = UserMessagingPlatform.getConsentInformation(activity);
++		Dictionary snapshot = buildUmpConsentSnapshot(consentInformation);
++		Log.i(LOG_TAG, "get_ump_consent_snapshot(): " + snapshot);
++		return snapshot;
 +	}
 +
 +	@UsedByGodot
@@ -53,6 +89,46 @@ index a9be132..7473eaa 100644
 +					}
 +			);
 +		});
++	}
++
++	private void logUmpConsentSnapshot(String label, ConsentInformation consentInformation) {
++		Dictionary snapshot = buildUmpConsentSnapshot(consentInformation);
++		Log.i(LOG_TAG, String.format("ump_consent_snapshot[%s]: %s", label, snapshot));
++	}
++
++	private Dictionary buildUmpConsentSnapshot(ConsentInformation consentInformation) {
++		int consentStatusCode = consentInformation.getConsentStatus();
++		ConsentInformation.PrivacyOptionsRequirementStatus privacyStatus =
++				consentInformation.getPrivacyOptionsRequirementStatus();
++		boolean canRequestAds = consentInformation.canRequestAds();
++		boolean formAvailable = consentInformation.isConsentFormAvailable();
++
++		Dictionary snapshot = new Dictionary();
++		snapshot.put("consent_status_code", consentStatusCode);
++		snapshot.put("consent_status", consentStatusCodeToString(consentStatusCode));
++		snapshot.put("can_request_ads", canRequestAds);
++		snapshot.put("privacy_options_requirement_status",
++				privacyOptionsRequirementStatusToString(privacyStatus));
++		snapshot.put("is_consent_form_available", formAvailable);
++		return snapshot;
++	}
++
++	private static String consentStatusCodeToString(int consentStatusCode) {
++		return switch (consentStatusCode) {
++			case ConsentInformation.ConsentStatus.NOT_REQUIRED -> "NOT_REQUIRED";
++			case ConsentInformation.ConsentStatus.REQUIRED -> "REQUIRED";
++			case ConsentInformation.ConsentStatus.OBTAINED -> "OBTAINED";
++			default -> "UNKNOWN";
++		};
++	}
++
++	private static String privacyOptionsRequirementStatusToString(
++			ConsentInformation.PrivacyOptionsRequirementStatus status) {
++		return switch (status) {
++			case REQUIRED -> "REQUIRED";
++			case NOT_REQUIRED -> "NOT_REQUIRED";
++			default -> "UNKNOWN";
++		};
 +	}
 +
  	@UsedByGodot

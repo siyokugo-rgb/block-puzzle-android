@@ -1269,11 +1269,11 @@ func reset_consent_info() -> void:
 
 
 func can_request_ads() -> bool:
+	# Call native directly (same pattern as get_consent_status / is_consent_form_available).
+	# Do not gate on has_method(): Godot Android plugin singletons may not advertise
+	# @UsedByGodot methods via has_method, which previously forced a false fail-closed path.
 	if _plugin_singleton == null:
 		GmpLogger.log_error("%s plugin not initialized" % PLUGIN_SINGLETON_NAME)
-		return false
-	if not _plugin_singleton.has_method("can_request_ads"):
-		GmpLogger.log_error("%s missing can_request_ads()" % PLUGIN_SINGLETON_NAME)
 		return false
 	return bool(_plugin_singleton.can_request_ads())
 
@@ -1282,21 +1282,25 @@ func get_privacy_options_requirement_status() -> PrivacyOptionsRequirementStatus
 	var __result: String = ""
 	if _plugin_singleton == null:
 		GmpLogger.log_error("%s plugin not initialized" % PLUGIN_SINGLETON_NAME)
-	elif not _plugin_singleton.has_method("get_privacy_options_requirement_status"):
-		GmpLogger.log_error("%s missing get_privacy_options_requirement_status()" % PLUGIN_SINGLETON_NAME)
 	else:
-		__result = _plugin_singleton.get_privacy_options_requirement_status()
+		__result = str(_plugin_singleton.get_privacy_options_requirement_status())
 	return PrivacyOptionsRequirementStatus.new(__result)
+
+
+func get_ump_consent_snapshot() -> Dictionary:
+	## Native atomic UMP snapshot for diagnostics (Phase 0-E). Empty if plugin missing.
+	if _plugin_singleton == null:
+		GmpLogger.log_error("%s plugin not initialized" % PLUGIN_SINGLETON_NAME)
+		return {}
+	var snapshot: Variant = _plugin_singleton.get_ump_consent_snapshot()
+	return snapshot if typeof(snapshot) == TYPE_DICTIONARY else {}
 
 
 func show_privacy_options_form() -> void:
 	if _plugin_singleton == null:
 		GmpLogger.log_error("%s plugin not initialized" % PLUGIN_SINGLETON_NAME)
-	elif not _plugin_singleton.has_method("show_privacy_options_form"):
-		GmpLogger.log_error("%s missing show_privacy_options_form()" % PLUGIN_SINGLETON_NAME)
 	else:
 		_plugin_singleton.show_privacy_options_form()
-
 
 func set_mediation_privacy_settings(privacySettings: NetworkPrivacySettings) -> void:
 	if _plugin_singleton == null:

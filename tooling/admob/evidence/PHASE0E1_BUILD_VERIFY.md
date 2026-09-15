@@ -1,14 +1,14 @@
 # Phase 0-E.1 build verification (Cloud Agent)
 
-Date: 2026-09-15
+Date: 2026-09-15 (Scenario A FIX FIRST rebuild)
 
 - Upstream: godot-sdk-integrations/godot-admob `v7.0` / `4b4ddceab0be81f0dcb12a6313038dba6cf9eacf`
 - Native patch applied + AAR rebuilt via `tooling/admob/native-patch/`
-- Debug AAR SHA-256: `c36762992d6ddc8a6a16461f650633f4b48e36f8bcdc40680f97766d5357b12c`
-- Release AAR SHA-256: `a975afc114fba1e2dbe8cc4681f77eac1fcd95eda8b0bda693a047e0601e03d9`
-- Public methods present: `can_request_ads`, `get_privacy_options_requirement_status`, `show_privacy_options_form`
-- GUT: 12/12 PASS
-- APK: `build/android/phase0e-debug.apk` SUCCESS
-- AAB regression: SUCCESS
-- Xperia runtime: not verified in this environment
-- Phase 0-E overall: still **FIX FIRST** (device scenarios pending; not COMPLETE)
+- APK UMP: `user-messaging-platform` 3.2.0 / `play-services-ads` 24.9.0
+- Debug AAR SHA-256: `d0489086af10646029655c368faaf6c538551bb0b0defd49c0978152e7448a91`
+- Release AAR SHA-256: `97af716412b28596961da8a333a703327ec4d0e53bb2fa3cdcef44921555df77`
+- Public methods present: `can_request_ads`, `get_privacy_options_requirement_status`, `show_privacy_options_form`, `get_ump_consent_snapshot`
+- Wrapper: removed Android `has_method` fail-closed gate on new UMP APIs
+- Debug geo: fixed `keys()[enum_value]` mislabel (`OTHER` vs `REGULATED_US_STATE`)
+- Fail-closed ads gate retained (`canRequestAds=false` still blocks banner)
+- Phase 0-E overall: **FIX FIRST** until Xperia Scenario A re-verified

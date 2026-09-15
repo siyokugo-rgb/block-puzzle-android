@@ -82,7 +82,7 @@ echo "==> Public method smoke check (debug AAR)"
 TMP_AAR="$(mktemp -d)"
 unzip -qo "${DEST_DEBUG}" -d "${TMP_AAR}"
 javap -classpath "${TMP_AAR}/classes.jar" -public org.godotengine.plugin.admob.AdmobPlugin \
-	| rg "can_request_ads|get_privacy_options_requirement_status|show_privacy_options_form" \
+	| rg "can_request_ads|get_privacy_options_requirement_status|show_privacy_options_form|get_ump_consent_snapshot" \
 	|| {
 		echo "ERROR: expected public methods not found in AAR" >&2
 		exit 1
