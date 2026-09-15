@@ -1,26 +1,19 @@
 extends Control
 
-## Phase 0-F production baseline shell.
-## Starts UMP consent update automatically on launch (no debug geography / test hash).
-## Banner requests auto-run only when canRequestAds=true AND production unit IDs are set.
-## Privacy Options remains available when REQUIRED. Game systems are not started here.
+## Phase 0-F production baseline shell + Phase 1-D playable GameView child.
+## Keeps UMP consent update, Privacy Options, and AdsConsentService unchanged.
+## Game systems live under GameView; this script does not own board/tray state.
 
 @onready var _title: Label = $Title
 @onready var _status: Label = $Status
-@onready var _hint: Label = $Hint
 @onready var _privacy_button: Button = $Buttons/PrivacyOptionsButton
 @onready var _admob: Admob = $Admob
 @onready var _ads: AdsConsentService = $AdsConsentService
+@onready var _game_view: Control = $GameView
 
 
 func _ready() -> void:
 	_title.text = "Block Puzzle"
-	_hint.text = (
-		"Phase 0 production baseline.\n"
-		+ "Consent update starts automatically on launch.\n"
-		+ "Regression spike: scenes/regression/phase0e_ump_spike.tscn\n"
-		+ "Production AdMob unit IDs are empty — banner requests stay blocked."
-	)
 	_privacy_button.disabled = true
 	_ads.use_test_ad_units = false
 	_ads.auto_request_banner = true

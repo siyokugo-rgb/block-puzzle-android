@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3 uid="uid://phase0f_main_baseline"]
+[gd_scene load_steps=5 format=3 uid="uid://phase0f_main_baseline"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://addons/AdmobPlugin/Admob.gd" id="2_admob"]
 [ext_resource type="Script" path="res://scripts/ads/ads_consent_service.gd" id="3_ads"]
+[ext_resource type="PackedScene" path="res://scenes/game/game.tscn" id="4_game"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -13,58 +14,55 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_main")
 
+[node name="GameView" parent="." instance=ExtResource("4_game")]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
 [node name="Title" type="Label" parent="."]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
 offset_left = 16.0
-offset_top = 48.0
+offset_top = 8.0
 offset_right = -16.0
-offset_bottom = 100.0
-theme_override_font_sizes/font_size = 32
+offset_bottom = 44.0
+theme_override_font_sizes/font_size = 22
 text = "Block Puzzle"
 horizontal_alignment = 1
+mouse_filter = 2
 
 [node name="Status" type="Label" parent="."]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_left = 16.0
-offset_top = 110.0
-offset_right = -16.0
-offset_bottom = 180.0
-theme_override_font_sizes/font_size = 16
+offset_left = 12.0
+offset_top = 44.0
+offset_right = -12.0
+offset_bottom = 100.0
+theme_override_font_sizes/font_size = 12
 text = "Status: idle"
 autowrap_mode = 3
 horizontal_alignment = 1
+mouse_filter = 2
 
-[node name="Hint" type="Label" parent="."]
+[node name="Buttons" type="HBoxContainer" parent="."]
 layout_mode = 1
-anchors_preset = 10
-anchor_right = 1.0
-offset_left = 24.0
-offset_top = 190.0
-offset_right = -24.0
-offset_bottom = 320.0
-theme_override_font_sizes/font_size = 14
-text = "Phase 0 production baseline"
-autowrap_mode = 3
-horizontal_alignment = 1
-
-[node name="Buttons" type="VBoxContainer" parent="."]
-layout_mode = 1
-anchors_preset = 8
+anchors_preset = 7
 anchor_left = 0.5
-anchor_top = 0.5
+anchor_top = 1.0
 anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -200.0
-offset_top = -40.0
-offset_right = 200.0
-offset_bottom = 40.0
+anchor_bottom = 1.0
+offset_left = -120.0
+offset_top = -112.0
+offset_right = 120.0
+offset_bottom = -72.0
 grow_horizontal = 2
-grow_vertical = 2
-theme_override_constants/separation = 12
+grow_vertical = 0
+alignment = 1
 
 [node name="PrivacyOptionsButton" type="Button" parent="Buttons"]
 layout_mode = 2

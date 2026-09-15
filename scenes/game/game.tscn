@@ -1,0 +1,59 @@
+[gd_scene load_steps=5 format=3 uid="uid://phase1d_game_view"]
+
+[ext_resource type="Script" path="res://scripts/game_ui/game_view.gd" id="1_game"]
+[ext_resource type="Script" path="res://scripts/game_ui/board_view.gd" id="2_board"]
+[ext_resource type="Script" path="res://scripts/game_ui/piece_view.gd" id="3_piece"]
+
+[node name="GameView" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+script = ExtResource("1_game")
+
+[node name="BoardView" type="Control" parent="."]
+layout_mode = 0
+mouse_filter = 2
+script = ExtResource("2_board")
+
+[node name="TrayRow" type="HBoxContainer" parent="."]
+layout_mode = 0
+mouse_filter = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="Slot0" type="Control" parent="TrayRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+script = ExtResource("3_piece")
+
+[node name="Slot1" type="Control" parent="TrayRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+script = ExtResource("3_piece")
+
+[node name="Slot2" type="Control" parent="TrayRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+script = ExtResource("3_piece")
+
+[node name="DragPiece" type="Control" parent="."]
+visible = false
+layout_mode = 0
+mouse_filter = 2
+script = ExtResource("3_piece")
+
+[node name="GameOverLabel" type="Label" parent="."]
+visible = false
+layout_mode = 0
+theme_override_font_sizes/font_size = 40
+theme_override_colors/font_color = Color(0.95, 0.35, 0.35, 1)
+text = "GAME OVER"
+horizontal_alignment = 1
+vertical_alignment = 1
