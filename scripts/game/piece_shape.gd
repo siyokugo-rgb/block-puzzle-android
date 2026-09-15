@@ -43,6 +43,29 @@ func cell_count() -> int:
 	return _cells.size() if _valid else 0
 
 
+## Inclusive axis-aligned bounds of offsets. Invalid when piece is invalid.
+func min_offset() -> Vector2i:
+	if not _valid:
+		return Vector2i.ZERO
+	var min_v: Vector2i = _cells[0]
+	for i in range(1, _cells.size()):
+		var c: Vector2i = _cells[i]
+		min_v.x = mini(min_v.x, c.x)
+		min_v.y = mini(min_v.y, c.y)
+	return min_v
+
+
+func max_offset() -> Vector2i:
+	if not _valid:
+		return Vector2i.ZERO
+	var max_v: Vector2i = _cells[0]
+	for i in range(1, _cells.size()):
+		var c: Vector2i = _cells[i]
+		max_v.x = maxi(max_v.x, c.x)
+		max_v.y = maxi(max_v.y, c.y)
+	return max_v
+
+
 func _build(offsets: Array) -> void:
 	_cells.clear()
 	_valid = false

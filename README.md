@@ -3,7 +3,8 @@
 Phase 0 production baseline for Godot 4.7.2 Android + GUT + AdMob/UMP.
 
 Phase 1-A adds a UI-free block-placement **game core** (Board / Piece / place / line clear).
-Score, tray, generator, input, and Adaptive Difficulty are **not** implemented yet.
+Phase 1-B adds **piece supply** (catalog / seeded generator / 3-slot tray / placement search).
+Score, GameSession, refill, Game Over, Adaptive Difficulty, and production piece catalogs are **not** implemented yet.
 
 ## Status
 
@@ -16,6 +17,7 @@ Score, tray, generator, input, and Adaptive Difficulty are **not** implemented y
 | 0-E UMP consent gate | COMPLETE — Android reference-device scenarios A–E PASS |
 | 0-F Production baseline closeout | COMPLETE |
 | 1-A Block placement game core | COMPLETE |
+| 1-B Piece supply / tray / placement search | COMPLETE |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
@@ -37,6 +39,24 @@ Contract:
 - `place()` is atomic: validate all cells, then commit; failure leaves the board unchanged
 - Line clear detects all full rows/columns first, then clears the cell union once (intersections counted once)
 - Board size is constructor input (not hard-coded); tests use small boards. Final playable board size is **not** finalized in Phase 1-A.
+
+## Phase 1-B piece supply
+
+| Type | Path |
+| --- | --- |
+| `PieceCatalog` | `scripts/game/piece_catalog.gd` |
+| `PieceGenerator` | `scripts/game/piece_generator.gd` |
+| `PieceTray` | `scripts/game/piece_tray.gd` |
+| `PlacementSearch` | `scripts/game/placement_search.gd` |
+
+Contract:
+
+- Tray has exactly **3** slots; `consume(index)` empties one slot; no auto-refill in Phase 1-B
+- Generator uses injected `RandomNumberGenerator` (seedable); uniform pick from catalog (not production weighting)
+- Same seed + same catalog → reproducible sequence
+- Placement search derives origin bounds from piece min/max offsets (supports negative / translated offsets); `BoardState.can_place` is SoT
+- `PlacementSearch.has_any_placeable_piece` checks remaining tray pieces only — **not** a Game Over API
+- Production piece catalog / board size / rotation / refill lifecycle remain unspecified
 
 ## Versions
 
@@ -102,7 +122,7 @@ API audit: `tooling/admob/UMP_API_AUDIT.md`
 ./tooling/gut/run_tests.sh
 ```
 
-Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`, `tests/test_phase1a.gd`.
+Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`, `tests/test_phase1a.gd`, `tests/test_phase1b.gd`.
 
 ## Debug APK / AAB
 
@@ -116,13 +136,13 @@ godot --headless --path . --export-debug "Android AAB" build/android/phase0c-deb
 
 Do not commit APK / AAB / keystores / production AdMob IDs / UMP device hashes.
 
-### Phase 1-A AAB re-export
+### Phase 1-A / 1-B AAB re-export
 
-AAB re-export was **skipped** for Phase 1-A closeout for these reasons:
+AAB re-export was **skipped** for Phase 1-A and Phase 1-B closeout for these reasons:
 
 - No Android Gradle configuration changes
 - No `export_presets.cfg` changes
 - No AdMob / native plugin changes
-- Phase 1-A adds GDScript game core only
+- Changes are GDScript game-domain only
 - Debug APK export **PASS**
-- Under Phase 1-A completion criteria, AAB re-export was judged unnecessary
+- Under phase completion criteria, AAB re-export was judged unnecessary
