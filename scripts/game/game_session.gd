@@ -79,6 +79,22 @@ func remaining_piece_count() -> int:
 	return _tray.remaining_count()
 
 
+## Read-only placement query. Never mutates board, tray, status, or generator consumption.
+func can_place_from_slot(slot_index: int, origin: Vector2i) -> bool:
+	if _status != Status.ACTIVE:
+		return false
+	if slot_index < 0 or slot_index >= PieceTray.SLOT_COUNT:
+		return false
+	if _tray == null or not _tray.is_valid() or not _tray.has_piece(slot_index):
+		return false
+	var piece := _tray.piece_at(slot_index)
+	if piece == null or not piece.is_valid():
+		return false
+	if _board == null or not _board.is_valid():
+		return false
+	return _board.can_place(piece, origin)
+
+
 ## Atomic move: validate all preconditions, then place → clear → consume → maybe refill → GO check.
 func place_from_slot(slot_index: int, origin: Vector2i) -> MoveResult:
 	if _status == Status.INVALID:

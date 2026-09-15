@@ -5,7 +5,8 @@ Phase 0 production baseline for Godot 4.7.2 Android + GUT + AdMob/UMP.
 Phase 1-A adds a UI-free block-placement **game core** (Board / Piece / place / line clear).
 Phase 1-B adds **piece supply** (catalog / seeded generator / 3-slot tray / placement search).
 Phase 1-C adds **GameSession** (move transaction / 3-clear refill / Game Over).
-Score, Adaptive Difficulty, production catalogs, and UI/input are **not** implemented yet.
+Phase 1-D adds a **minimal playable vertical slice** (board/tray render, touch drag, place via GameSession).
+Score, Adaptive Difficulty, production catalogs, and final board size are **not** implemented yet.
 
 ## Status
 
@@ -20,6 +21,7 @@ Score, Adaptive Difficulty, production catalogs, and UI/input are **not** implem
 | 1-A Block placement game core | COMPLETE |
 | 1-B Piece supply / tray / placement search | COMPLETE |
 | 1-C Game session / tray lifecycle / Game Over | COMPLETE |
+| 1-D Minimal playable vertical slice | in progress (Draft PR) |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
@@ -76,6 +78,27 @@ Contract:
 - Game Over = remaining tray pieces exist and **none** are placeable (`PlacementSearch.has_any_placeable_piece`); empty tray is not Game Over (refill runs first)
 - Session states: `INVALID` / `ACTIVE` / `GAME_OVER`
 - No Score / UI / final board size / production catalog in this phase
+
+## Phase 1-D playable slice
+
+| Type | Path |
+| --- | --- |
+| Game view scene | `scenes/game/game.tscn` |
+| `GameView` | `scripts/game_ui/game_view.gd` |
+| `BoardView` / `PieceView` | `scripts/game_ui/board_view.gd`, `piece_view.gd` |
+| `BoardCoords` | `scripts/game_ui/board_coords.gd` |
+| `PlacementDrag` | `scripts/game_ui/placement_drag.gd` |
+| Dev play config | `scripts/game_ui/dev_play_config.gd` |
+
+Contract:
+
+- `GameSession` remains Source of Truth; UI does not own board occupancy / refill / Game Over
+- Placement preview uses read-only `GameSession.can_place_from_slot` (no mutation)
+- Commit uses `place_from_slot` only on pointer release; `MoveResult.success` is SoT
+- Pixel↔cell conversion is centralized in `BoardCoords` (Session never receives pixels)
+- Drag preview is offset upward by `DevPlayConfig.DEV_DRAG_FINGER_OFFSET_CELLS` × cell size
+- **Development** board size (`DEV_BOARD_WIDTH` / `DEV_BOARD_HEIGHT`) and **development catalog** only — not production / final
+- Score / restart / clear animation / production AdMob IDs are out of scope
 
 ## Versions
 
@@ -141,7 +164,7 @@ API audit: `tooling/admob/UMP_API_AUDIT.md`
 ./tooling/gut/run_tests.sh
 ```
 
-Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`, `tests/test_phase1a.gd`, `tests/test_phase1b.gd`, `tests/test_phase1c.gd`.
+Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`, `tests/test_phase1a.gd`, `tests/test_phase1b.gd`, `tests/test_phase1c.gd`, `tests/test_phase1d.gd`.
 
 ## Debug APK / AAB
 
@@ -155,13 +178,13 @@ godot --headless --path . --export-debug "Android AAB" build/android/phase0c-deb
 
 Do not commit APK / AAB / keystores / production AdMob IDs / UMP device hashes.
 
-### Phase 1-A / 1-B / 1-C AAB re-export
+### Phase 1-A / 1-B / 1-C / 1-D AAB re-export
 
-AAB re-export was **skipped** for Phase 1-A through 1-C closeout for these reasons:
+AAB re-export was **skipped** for Phase 1-A through 1-D closeout for these reasons:
 
 - No Android Gradle configuration changes
 - No `export_presets.cfg` changes
 - No AdMob / native plugin changes
-- Changes are GDScript game-domain only
-- Debug APK export **PASS**
+- Changes are GDScript / scene only (domain + UI slice)
+- Debug APK export **PASS** (when built for the phase)
 - Under phase completion criteria, AAB re-export was judged unnecessary
