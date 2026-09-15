@@ -3,7 +3,8 @@ extends GutTest
 ## Phase 0-F: production baseline auto UMP / auto banner / UI / ID separation.
 
 
-class FakeAdmob extends Admob:
+## Lightweight duck-typed Admob double (does not extend Admob — avoids plugin _ready).
+class FakeAdmob extends Node:
 	var update_consent_calls: int = 0
 	var initialize_calls: int = 0
 	var load_banner_calls: int = 0
@@ -13,7 +14,7 @@ class FakeAdmob extends Admob:
 	var fake_can_request: bool = false
 	var fake_privacy: String = "NOT_REQUIRED"
 
-	func update_consent_info(_params: ConsentRequestParameters) -> void:
+	func update_consent_info(_a_parameters: ConsentRequestParameters = null) -> void:
 		update_consent_calls += 1
 
 	func initialize() -> void:
@@ -34,21 +35,21 @@ class FakeAdmob extends Admob:
 	func create_banner_ad_request() -> LoadAdRequest:
 		return LoadAdRequest.new()
 
-	func load_banner_ad(_request: LoadAdRequest) -> void:
+	func load_banner_ad(_a_request: LoadAdRequest = null) -> void:
 		load_banner_calls += 1
 
 	func is_banner_ad_loaded() -> bool:
 		return banner_loaded_flag
 
-	func remove_banner_ad(ad_id: String = "") -> void:
+	func remove_banner_ad(a_ad_id: String = "") -> void:
 		remove_banner_calls += 1
-		last_removed_id = ad_id
+		last_removed_id = a_ad_id
 		banner_loaded_flag = false
 
 	func show_privacy_options_form() -> void:
 		pass
 
-	func show_banner_ad(_ad_id: String) -> void:
+	func show_banner_ad(_a_ad_id: String = "") -> void:
 		pass
 
 

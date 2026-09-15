@@ -17,7 +17,9 @@ signal log_emitted(message: String)
 ## (only if AdsConfig has a banner unit for the current mode).
 @export var auto_request_banner: bool = false
 
-var _admob: Admob
+## Typed as Node so GUT can inject a lightweight duck-typed double.
+## Production always binds an Admob node.
+var _admob: Node
 
 var consent_update_completed: bool = false
 var consent_update_succeeded: bool = false
@@ -33,14 +35,14 @@ var banner_requested: bool = false
 var last_banner_ad_id: String = ""
 
 
-func bind_admob(admob: Admob) -> void:
+func bind_admob(admob: Node) -> void:
 	_admob = admob
 	_connect_admob_signals()
 
 
 func _ready() -> void:
 	if _admob == null and admob_path != NodePath(""):
-		_admob = get_node_or_null(admob_path) as Admob
+		_admob = get_node_or_null(admob_path)
 	if _admob != null:
 		_connect_admob_signals()
 
@@ -48,16 +50,27 @@ func _ready() -> void:
 func _connect_admob_signals() -> void:
 	if _admob == null:
 		return
-	_safe_connect(_admob.initialization_completed, _on_initialization_completed)
-	_safe_connect(_admob.banner_ad_loaded, _on_banner_ad_loaded)
-	_safe_connect(_admob.banner_ad_failed_to_load, _on_banner_ad_failed_to_load)
-	_safe_connect(_admob.banner_ad_refreshed, _on_banner_ad_refreshed)
-	_safe_connect(_admob.consent_info_updated, _on_consent_info_updated)
-	_safe_connect(_admob.consent_info_update_failed, _on_consent_info_update_failed)
-	_safe_connect(_admob.consent_form_loaded, _on_consent_form_loaded)
-	_safe_connect(_admob.consent_form_failed_to_load, _on_consent_form_failed_to_load)
-	_safe_connect(_admob.consent_form_dismissed, _on_consent_form_dismissed)
-	_safe_connect(_admob.privacy_options_form_dismissed, _on_privacy_options_form_dismissed)
+	# Real Admob exposes these signals; lightweight test doubles may omit them.
+	if _admob.has_signal("initialization_completed"):
+		_safe_connect(_admob.initialization_completed, _on_initialization_completed)
+	if _admob.has_signal("banner_ad_loaded"):
+		_safe_connect(_admob.banner_ad_loaded, _on_banner_ad_loaded)
+	if _admob.has_signal("banner_ad_failed_to_load"):
+		_safe_connect(_admob.banner_ad_failed_to_load, _on_banner_ad_failed_to_load)
+	if _admob.has_signal("banner_ad_refreshed"):
+		_safe_connect(_admob.banner_ad_refreshed, _on_banner_ad_refreshed)
+	if _admob.has_signal("consent_info_updated"):
+		_safe_connect(_admob.consent_info_updated, _on_consent_info_updated)
+	if _admob.has_signal("consent_info_update_failed"):
+		_safe_connect(_admob.consent_info_update_failed, _on_consent_info_update_failed)
+	if _admob.has_signal("consent_form_loaded"):
+		_safe_connect(_admob.consent_form_loaded, _on_consent_form_loaded)
+	if _admob.has_signal("consent_form_failed_to_load"):
+		_safe_connect(_admob.consent_form_failed_to_load, _on_consent_form_failed_to_load)
+	if _admob.has_signal("consent_form_dismissed"):
+		_safe_connect(_admob.consent_form_dismissed, _on_consent_form_dismissed)
+	if _admob.has_signal("privacy_options_form_dismissed"):
+		_safe_connect(_admob.privacy_options_form_dismissed, _on_privacy_options_form_dismissed)
 
 
 func _safe_connect(sig: Signal, callable: Callable) -> void:
@@ -122,7 +135,8 @@ func show_privacy_options_form() -> void:
 
 
 func request_banner_if_allowed() -> bool:
-	refresh_from_native("pre-banner gate check")
+	# Use core refresh so we do not re-enter auto-request from this path.
+	_refresh_from_native_core("pre-banner gate check")
 	if not consent_update_completed:
 		_emit_log("ad request denied: consent update not completed")
 		return false
@@ -147,6 +161,11 @@ func request_banner_if_allowed() -> bool:
 
 
 func refresh_from_native(note: String) -> void:
+	_refresh_from_native_core(note)
+	_maybe_auto_request_banner(note)
+
+
+func _refresh_from_native_core(note: String) -> void:
 	if _admob == null:
 		return
 	consent_status_text = _read_consent_status_text()
@@ -155,14 +174,13 @@ func refresh_from_native(note: String) -> void:
 	# keep the caller-provided can_request_ads so gate logic stays testable.
 	if Engine.has_singleton("AdmobPlugin"):
 		can_request_ads = _admob.can_request_ads()
-	var privacy := _admob.get_privacy_options_requirement_status()
+	var privacy: Variant = _admob.get_privacy_options_requirement_status()
 	privacy_status_text = privacy.to_status_string() if privacy else "UNKNOWN"
 	_apply_ads_decision(
 		ConsentGate.evaluate(consent_update_completed, can_request_ads),
 		note
 	)
 	state_changed.emit(note)
-	_maybe_auto_request_banner(note)
 
 
 func _maybe_auto_request_banner(note: String) -> void:
@@ -235,7 +253,7 @@ func _on_initialization_completed(_status_data: InitializationStatus) -> void:
 
 
 func _load_banner() -> void:
-	refresh_from_native("before banner load")
+	_refresh_from_native_core("before banner load")
 	if not is_ads_allowed():
 		banner_requested = false
 		return
@@ -337,7 +355,7 @@ func _remove_active_banner_if_any(reason: String) -> void:
 
 
 func _read_consent_status_text() -> String:
-	var consent := _admob.get_consent_status()
+	var consent: Variant = _admob.get_consent_status()
 	if consent == null:
 		return "UNKNOWN"
 	return consent.to_status_string()
