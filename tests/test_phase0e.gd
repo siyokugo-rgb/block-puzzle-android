@@ -45,13 +45,13 @@ func test_phase0e_privacy_options_status_model() -> void:
 
 
 func test_phase0e_auto_start_ads_disabled() -> void:
-	var src := FileAccess.get_file_as_string("res://scripts/main.gd")
+	var src := FileAccess.get_file_as_string("res://scripts/regression/phase0e_ump_spike.gd")
 	assert_true(src.find("SPIKE_AUTO_START_ADS := false") >= 0)
 	assert_true(src.find("SPIKE_AUTO_START_ADS := true") < 0)
 
 
 func test_phase0e_uses_google_test_ids_only() -> void:
-	var src := FileAccess.get_file_as_string("res://scripts/main.gd")
+	var src := FileAccess.get_file_as_string("res://scripts/regression/phase0e_ump_spike.gd")
 	assert_true(src.find("ca-app-pub-3940256099942544~3347511713") >= 0)
 	assert_true(src.find("ca-app-pub-3940256099942544/9214589741") >= 0)
 
@@ -84,7 +84,7 @@ func test_phase0e_debug_geography_label_uses_enum_value_not_keys_index() -> void
 			resolved = str(key)
 			break
 	assert_eq(resolved, "OTHER")
-	var main_src := FileAccess.get_file_as_string("res://scripts/main.gd")
+	var main_src := FileAccess.get_file_as_string("res://scripts/regression/phase0e_ump_spike.gd")
 	assert_true(main_src.find("DebugGeography.keys()[_selected_debug_geography()]") < 0)
 	assert_true(main_src.find("func _debug_geography_name(") >= 0)
 
@@ -110,7 +110,7 @@ func test_phase0e_allowed_to_blocked_requires_banner_cleanup() -> void:
 
 
 func test_phase0e_reset_path_uses_remove_banner_cleanup() -> void:
-	var src := FileAccess.get_file_as_string("res://scripts/main.gd")
+	var src := FileAccess.get_file_as_string("res://scripts/regression/phase0e_ump_spike.gd")
 	assert_true(src.find("func _remove_active_banner_if_any(") >= 0)
 	assert_true(src.find("func _apply_ads_decision(") >= 0)
 	assert_true(src.find("_apply_ads_decision(ConsentGate.initial_decision(), \"consent reset\")") >= 0)
@@ -127,13 +127,13 @@ func test_phase0e_reset_path_uses_remove_banner_cleanup() -> void:
 func test_phase0e_delayed_banner_loaded_while_blocked_is_discarded() -> void:
 	assert_true(ConsentGate.should_discard_loaded_banner(false))
 	assert_false(ConsentGate.should_discard_loaded_banner(true))
-	var src := FileAccess.get_file_as_string("res://scripts/main.gd")
+	var src := FileAccess.get_file_as_string("res://scripts/regression/phase0e_ump_spike.gd")
 	assert_true(src.find("delayed load while blocked") >= 0)
 	assert_true(src.find("should_discard_loaded_banner") >= 0)
 
 
 func test_phase0e_duplicate_and_blocked_request_guards_remain() -> void:
-	var src := FileAccess.get_file_as_string("res://scripts/main.gd")
+	var src := FileAccess.get_file_as_string("res://scripts/regression/phase0e_ump_spike.gd")
 	assert_true(src.find("duplicate banner request ignored") >= 0)
 	assert_true(src.find("ad request denied by canRequestAds gate") >= 0)
 	assert_eq(
