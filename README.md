@@ -2,7 +2,8 @@
 
 Phase 0 production baseline for Godot 4.7.2 Android + GUT + AdMob/UMP.
 
-Game systems (Board / Piece / Score / Adaptive Difficulty / etc.) are **not** implemented yet.
+Phase 1-A adds a UI-free block-placement **game core** (Board / Piece / place / line clear).
+Score, tray, generator, input, and Adaptive Difficulty are **not** implemented yet.
 
 ## Status
 
@@ -13,9 +14,29 @@ Game systems (Board / Piece / Score / Adaptive Difficulty / etc.) are **not** im
 | 0-C AAB | COMPLETE |
 | 0-D AdMob test banner | COMPLETE |
 | 0-E UMP consent gate | COMPLETE — Android reference-device scenarios A–E PASS |
-| 0-F Production baseline closeout | **COMPLETE** |
+| 0-F Production baseline closeout | COMPLETE |
+| 1-A Block placement game core | COMPLETE (this PR; not merged to main yet) |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
+
+## Phase 1-A game core
+
+UI-free domain model only (no tray / score / input / drawing):
+
+| Type | Path |
+| --- | --- |
+| `PieceShape` | `scripts/game/piece_shape.gd` |
+| `BoardState` | `scripts/game/board_state.gd` |
+| `LineClearResult` | `scripts/game/line_clear_result.gd` |
+
+Contract:
+
+- Cell coordinates: x left→right, y top→bottom, origin top-left `(0,0)`
+- Occupied = `true` in an internal bool grid (no pixel / UI coords)
+- Invalid pieces are rejected (`is_valid() == false`), never silently accepted
+- `place()` is atomic: validate all cells, then commit; failure leaves the board unchanged
+- Line clear detects all full rows/columns first, then clears the cell union once (intersections counted once)
+- Board size is constructor input (not hard-coded); tests use small boards. Final playable board size is **not** finalized in Phase 1-A.
 
 ## Versions
 
@@ -81,7 +102,7 @@ API audit: `tooling/admob/UMP_API_AUDIT.md`
 ./tooling/gut/run_tests.sh
 ```
 
-Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`.
+Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`, `tests/test_phase1a.gd`.
 
 ## Debug APK / AAB
 
