@@ -12,8 +12,8 @@ Game systems (Board / Piece / Score / Adaptive Difficulty / etc.) are **not** im
 | 0-B GUT | COMPLETE |
 | 0-C AAB | COMPLETE |
 | 0-D AdMob test banner | COMPLETE |
-| 0-E UMP consent gate | **COMPLETE** — Android reference-device scenarios A–E PASS |
-| 0-F Production baseline closeout | in progress on this branch |
+| 0-E UMP consent gate | COMPLETE — Android reference-device scenarios A–E PASS |
+| 0-F Production baseline closeout | **COMPLETE** |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
@@ -39,14 +39,30 @@ Xperia was the **reference test device** for Phase 0-E. The implementation itsel
 | Consent gate helpers | `scripts/consent_gate.gd` |
 | Phase 0-E regression spike | `scenes/regression/phase0e_ump_spike.tscn` |
 
-Rules:
+### Boot policy
 
-- Production main has **no** debug geography UI and **no** UMP test-device hash field
-- `AdsConsentService.use_test_ad_units = false` on the production scene
-- Production AdMob IDs are **empty** → no banner request until configured
-- Google test App/Banner IDs remain available only for the regression spike
-- Ads are blocked before consent update completes and when `canRequestAds` is false
-- Allowed → blocked removes any active banner (`remove_banner_ad`)
+1. After `main._ready()`, production builds `ConsentRequestParameters` with `set_is_real(true)` (no debug geography, no UMP test-device hash) and calls `AdsConsentService.begin_consent_update()` automatically.
+2. Duplicate in-flight consent updates are ignored.
+3. If a UMP form is required, the service loads/shows it as before.
+4. On update success **or** failure, ads follow native `canRequestAds` (SoT) after the update completes.
+5. When `auto_request_banner` is enabled (production main), after an allowed decision the service requests a banner **once** — only if production banner unit IDs are configured in `AdsConfig`.
+6. Phase 0-F keeps production IDs **empty**, so no banner request is issued yet.
+
+### Production UI
+
+- No **Update Consent** button (auto on launch)
+- No **Request Banner** button (auto when allowed + IDs set)
+- **Privacy Options** remains when status is `REQUIRED`
+
+### Test ID separation
+
+| ID role | Source | Notes |
+| --- | --- | --- |
+| AndroidManifest `APPLICATION_ID` | `addons/AdmobPlugin/android_export.cfg` | Required for debug APK/AAB export. Plugin prefers this file over scene Admob node fields when present. Uses Google sample App ID with `is_real=false` for Phase 0 debug builds. |
+| Banner **unit** ID for requests | `AdsConfig` (`scripts/ads/ads_config.gd`) | Production constants empty → no request. Google test banner unit is used only when `use_test_ad_units=true` (regression spike). |
+| Scene Admob node app/banner fields on production main | Cleared (`""`) | Not required for Manifest App ID (export cfg wins). Not used by `AdsConsentService` banner loads (unit ID comes from `AdsConfig`). |
+
+Google sample App/Banner IDs on the **Admob node** and manual A–E controls stay on the **regression spike only**. Do not describe Manifest App ID as “regression only” — debug export still needs `android_export.cfg`.
 
 ## Phase 0-E regression spike
 
@@ -54,7 +70,7 @@ Keep using the regression scene for future AdMob/UMP SDK re-checks (scenarios A�
 
 `scenes/regression/phase0e_ump_spike.tscn`
 
-It still includes debug geography controls and a runtime-only UMP test-device hash field (never committed / never persisted).
+It still includes debug geography, runtime-only UMP test-device hash, and manual Update Consent / Request Banner / Reset / Privacy Options buttons.
 
 Native patch notes: `tooling/admob/native-patch/README.md`  
 API audit: `tooling/admob/UMP_API_AUDIT.md`

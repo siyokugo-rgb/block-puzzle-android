@@ -59,35 +59,26 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -200.0
-offset_top = -80.0
+offset_top = -40.0
 offset_right = 200.0
-offset_bottom = 120.0
+offset_bottom = 40.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 12
-
-[node name="UpdateConsentButton" type="Button" parent="Buttons"]
-layout_mode = 2
-text = "Update Consent"
 
 [node name="PrivacyOptionsButton" type="Button" parent="Buttons"]
 layout_mode = 2
 disabled = true
 text = "Privacy Options"
 
-[node name="RequestBannerButton" type="Button" parent="Buttons"]
-layout_mode = 2
-disabled = true
-text = "Request Banner"
-
 [node name="Admob" type="Node" parent="."]
 script = ExtResource("2_admob")
 is_real = true
 banner_position = 1
 banner_size = 5
-android_debug_application_id = "ca-app-pub-3940256099942544~3347511713"
+android_debug_application_id = ""
 android_real_application_id = ""
-android_debug_banner_id = "ca-app-pub-3940256099942544/9214589741"
+android_debug_banner_id = ""
 android_real_banner_id = ""
 enabled_networks = 0
 debug_geography = -1
@@ -97,7 +88,6 @@ test_device_hashed_ids = Array[String]([])
 script = ExtResource("3_ads")
 admob_path = NodePath("../Admob")
 use_test_ad_units = false
+auto_request_banner = true
 
-[connection signal="pressed" from="Buttons/UpdateConsentButton" to="." method="_on_update_consent_button_pressed"]
 [connection signal="pressed" from="Buttons/PrivacyOptionsButton" to="." method="_on_privacy_options_button_pressed"]
-[connection signal="pressed" from="Buttons/RequestBannerButton" to="." method="_on_request_banner_button_pressed"]

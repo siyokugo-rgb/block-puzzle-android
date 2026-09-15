@@ -3,7 +3,8 @@ extends Node
 
 ## Minimal shared AdMob / UMP baseline (Phase 0-F).
 ## Owns consent update, canRequestAds gate, privacy options, banner request,
-## allowed→blocked banner cleanup, and duplicate / delayed-load guards.
+## allowed→blocked banner cleanup, duplicate / delayed-load guards,
+## and optional auto-banner after a completed update when IDs are configured.
 ## Debug geography and UMP test-device hash stay in the regression spike UI.
 
 signal state_changed(note: String)
@@ -12,11 +13,15 @@ signal log_emitted(message: String)
 @export var admob_path: NodePath
 ## Production baseline must keep this false (never fall back to Google test units).
 @export var use_test_ad_units: bool = false
+## When true, after consent update completes and ads are allowed, request banner once
+## (only if AdsConfig has a banner unit for the current mode).
+@export var auto_request_banner: bool = false
 
 var _admob: Admob
 
 var consent_update_completed: bool = false
 var consent_update_succeeded: bool = false
+var consent_update_in_flight: bool = false
 var form_available: bool = false
 var form_loaded: bool = false
 var consent_status_text: String = "UNKNOWN"
@@ -78,6 +83,10 @@ func begin_consent_update(params: ConsentRequestParameters) -> void:
 		_emit_log("FAIL: Admob node missing")
 		state_changed.emit("no admob")
 		return
+	if consent_update_in_flight:
+		_emit_log("consent update already in flight; duplicate begin ignored")
+		return
+	consent_update_in_flight = true
 	consent_update_completed = false
 	consent_update_succeeded = false
 	form_loaded = false
@@ -91,6 +100,7 @@ func begin_consent_update(params: ConsentRequestParameters) -> void:
 func reset_consent() -> void:
 	if _admob == null:
 		return
+	consent_update_in_flight = false
 	consent_update_completed = false
 	consent_update_succeeded = false
 	form_available = false
@@ -141,7 +151,8 @@ func refresh_from_native(note: String) -> void:
 		return
 	consent_status_text = _read_consent_status_text()
 	form_available = _admob.is_consent_form_available()
-	can_request_ads = false
+	# On-device SoT is native can_request_ads(). Without the plugin (editor/GUT),
+	# keep the caller-provided can_request_ads so gate logic stays testable.
 	if Engine.has_singleton("AdmobPlugin"):
 		can_request_ads = _admob.can_request_ads()
 	var privacy := _admob.get_privacy_options_requirement_status()
@@ -151,11 +162,29 @@ func refresh_from_native(note: String) -> void:
 		note
 	)
 	state_changed.emit(note)
+	_maybe_auto_request_banner(note)
+
+
+func _maybe_auto_request_banner(note: String) -> void:
+	if not auto_request_banner:
+		return
+	if not consent_update_completed:
+		return
+	if not is_ads_allowed():
+		return
+	# Empty production IDs: never request (expected Phase 0-F baseline).
+	if not AdsConfig.can_request_banner(use_test_ad_units):
+		return
+	if banner_requested:
+		return
+	_emit_log("auto banner request after %s" % note)
+	request_banner_if_allowed()
 
 
 func _on_consent_info_updated() -> void:
 	consent_update_succeeded = true
 	consent_update_completed = true
+	consent_update_in_flight = false
 	refresh_from_native("consent update SUCCESS")
 	if form_available and consent_status_text == "REQUIRED":
 		_admob.load_consent_form()
@@ -164,6 +193,7 @@ func _on_consent_info_updated() -> void:
 func _on_consent_info_update_failed(error_data: FormError) -> void:
 	consent_update_succeeded = false
 	consent_update_completed = true
+	consent_update_in_flight = false
 	var message := error_data.get_message() if error_data else "unknown"
 	refresh_from_native("consent update FAILED: %s" % message)
 
@@ -197,11 +227,11 @@ func _on_initialization_completed(_status_data: InitializationStatus) -> void:
 	sdk_initialized = true
 	_emit_log("initialization_completed")
 	refresh_from_native("sdk initialized")
-	if is_ads_allowed():
+	if is_ads_allowed() and AdsConfig.can_request_banner(use_test_ad_units):
 		_load_banner()
 	else:
 		banner_requested = false
-		_emit_log("SDK init completed but canRequestAds=false; no banner request")
+		_emit_log("SDK init completed; banner not requested (gate or missing unit id)")
 
 
 func _load_banner() -> void:
