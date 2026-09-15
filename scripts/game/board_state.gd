@@ -3,7 +3,8 @@ extends RefCounted
 
 ## Phase 1-A: pure logical board (no UI / pixels).
 ## Coordinates: x left→right, y top→bottom, origin top-left (0, 0).
-## Occupied representation: bool grid, true = occupied.
+## Occupied representation: binary grid backed by PackedByteArray rows
+## (0 = empty, 1 = occupied).
 
 var _width: int = 0
 var _height: int = 0

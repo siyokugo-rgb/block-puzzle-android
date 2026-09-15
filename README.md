@@ -15,7 +15,7 @@ Score, tray, generator, input, and Adaptive Difficulty are **not** implemented y
 | 0-D AdMob test banner | COMPLETE |
 | 0-E UMP consent gate | COMPLETE — Android reference-device scenarios A–E PASS |
 | 0-F Production baseline closeout | COMPLETE |
-| 1-A Block placement game core | COMPLETE (this PR; not merged to main yet) |
+| 1-A Block placement game core | COMPLETE |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
@@ -32,7 +32,7 @@ UI-free domain model only (no tray / score / input / drawing):
 Contract:
 
 - Cell coordinates: x left→right, y top→bottom, origin top-left `(0,0)`
-- Occupied = `true` in an internal bool grid (no pixel / UI coords)
+- Occupied: binary occupancy grid backed by `PackedByteArray` rows (`0` empty / `1` occupied); no pixel / UI coords
 - Invalid pieces are rejected (`is_valid() == false`), never silently accepted
 - `place()` is atomic: validate all cells, then commit; failure leaves the board unchanged
 - Line clear detects all full rows/columns first, then clears the cell union once (intersections counted once)
@@ -115,3 +115,14 @@ godot --headless --path . --export-debug "Android AAB" build/android/phase0c-deb
 ```
 
 Do not commit APK / AAB / keystores / production AdMob IDs / UMP device hashes.
+
+### Phase 1-A AAB re-export
+
+AAB re-export was **skipped** for Phase 1-A closeout for these reasons:
+
+- No Android Gradle configuration changes
+- No `export_presets.cfg` changes
+- No AdMob / native plugin changes
+- Phase 1-A adds GDScript game core only
+- Debug APK export **PASS**
+- Under Phase 1-A completion criteria, AAB re-export was judged unnecessary
