@@ -20,6 +20,7 @@ var _tray_views: Array[PieceView] = []
 var _tray_hit_rects: Array[Rect2] = []
 var _input_enabled: bool = true
 var _active_pointer_id: int = -1
+var _mouse_button_was_down: bool = false
 
 
 func _ready() -> void:
@@ -33,6 +34,7 @@ func _ready() -> void:
 		if child is PieceView:
 			_tray_views.append(child)
 			child.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	set_process(true)
 	if _session == null:
 		start_dev_session()
 
@@ -122,13 +124,14 @@ func _sync_tray_pieces() -> void:
 		return
 	for i in range(_tray_views.size()):
 		var view := _tray_views[i]
+		# Keep slot controls visible so HBox layout does not collapse empty slots.
+		view.visible = true
 		if _session.has_piece(i):
 			view.set_piece(_session.piece_at(i))
 			view.set_dimmed(_drag.is_dragging() and _drag.slot_index() == i)
-			view.visible = true
 		else:
 			view.clear_piece()
-			view.visible = false
+			view.set_dimmed(false)
 
 
 func _finger_offset() -> Vector2:
@@ -136,9 +139,19 @@ func _finger_offset() -> Vector2:
 	return Vector2(0.0, -cell * DevPlayConfig.DEV_DRAG_FINGER_OFFSET_CELLS)
 
 
+func _process(_delta: float) -> void:
+	# Desktop editor/x11: guarantee move + mouse-up while dragging even if
+	# _gui_input/_input miss the release (pointer leave / focus quirks).
+	var mouse_down := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+	if _drag.is_dragging() and _active_pointer_id == 0:
+		_on_move(0, get_local_mouse_position())
+		if _mouse_button_was_down and not mouse_down:
+			_on_release(0)
+	_mouse_button_was_down = mouse_down
+
+
 func _gui_input(event: InputEvent) -> void:
-	if not _input_enabled and not _drag.is_dragging():
-		return
+	# Primary path for presses and in-control mouse move/release.
 	if event is InputEventScreenTouch:
 		var touch := event as InputEventScreenTouch
 		if touch.pressed:
@@ -163,6 +176,25 @@ func _gui_input(event: InputEvent) -> void:
 		accept_event()
 
 
+func _input(event: InputEvent) -> void:
+	# Fallback when pointer leaves this control mid-drag (esp. mouse).
+	if not _drag.is_dragging():
+		return
+	if event is InputEventScreenTouch:
+		var touch := event as InputEventScreenTouch
+		if not touch.pressed and touch.index == _active_pointer_id:
+			_on_release(touch.index)
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+		var mouse := event as InputEventMouseButton
+		if not mouse.pressed and _active_pointer_id == 0:
+			_on_release(0)
+			get_viewport().set_input_as_handled()
+
+
+func _to_local(viewport_pos: Vector2) -> Vector2:
+	return get_global_transform_with_canvas().affine_inverse() * viewport_pos
+
 func _on_press(pointer_id: int, local_pos: Vector2) -> void:
 	if _drag.is_dragging():
 		return
@@ -174,6 +206,8 @@ func _on_press(pointer_id: int, local_pos: Vector2) -> void:
 	if not _drag.begin(_session, slot, local_pos):
 		return
 	_active_pointer_id = pointer_id
+	if pointer_id == 0:
+		_mouse_button_was_down = true
 	_drag_piece.set_piece(_session.piece_at(slot))
 	_drag_piece.set_cell_size(_coords.cell_size() if _coords != null else 24.0)
 	_drag_piece.set_dimmed(false)
@@ -194,6 +228,7 @@ func _on_release(pointer_id: int) -> void:
 		return
 	var result := _drag.release(_session)
 	_active_pointer_id = -1
+	_mouse_button_was_down = false
 	_drag_piece.visible = false
 	_board_view.clear_preview()
 	# MoveResult is SoT — only success redraws as a committed move.
