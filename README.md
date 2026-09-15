@@ -4,7 +4,8 @@ Phase 0 production baseline for Godot 4.7.2 Android + GUT + AdMob/UMP.
 
 Phase 1-A adds a UI-free block-placement **game core** (Board / Piece / place / line clear).
 Phase 1-B adds **piece supply** (catalog / seeded generator / 3-slot tray / placement search).
-Score, GameSession, refill, Game Over, Adaptive Difficulty, and production piece catalogs are **not** implemented yet.
+Phase 1-C adds **GameSession** (move transaction / 3-clear refill / Game Over).
+Score, Adaptive Difficulty, production catalogs, and UI/input are **not** implemented yet.
 
 ## Status
 
@@ -18,6 +19,7 @@ Score, GameSession, refill, Game Over, Adaptive Difficulty, and production piece
 | 0-F Production baseline closeout | COMPLETE |
 | 1-A Block placement game core | COMPLETE |
 | 1-B Piece supply / tray / placement search | COMPLETE |
+| 1-C Game session / tray lifecycle / Game Over | COMPLETE |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
@@ -57,6 +59,23 @@ Contract:
 - Placement search derives origin bounds from piece min/max offsets (supports negative / translated offsets); `BoardState.can_place` is SoT
 - `PlacementSearch.has_any_placeable_piece` checks remaining tray pieces only — **not** a Game Over API
 - Production piece catalog / board size / rotation / refill lifecycle remain unspecified
+
+## Phase 1-C game session
+
+| Type | Path |
+| --- | --- |
+| `GameSession` | `scripts/game/game_session.gd` |
+| `MoveResult` | `scripts/game/move_result.gd` |
+
+Contract:
+
+- Initial tray = `generate_three()` (3 pieces)
+- Refill **only** when all 3 slots are consumed (not one-for-one)
+- Move order: validate → `place` → `clear_completed_lines` → `consume` → maybe refill → Game Over check
+- Failed moves mutate nothing (board / tray / refill)
+- Game Over = remaining tray pieces exist and **none** are placeable (`PlacementSearch.has_any_placeable_piece`); empty tray is not Game Over (refill runs first)
+- Session states: `INVALID` / `ACTIVE` / `GAME_OVER`
+- No Score / UI / final board size / production catalog in this phase
 
 ## Versions
 
@@ -122,7 +141,7 @@ API audit: `tooling/admob/UMP_API_AUDIT.md`
 ./tooling/gut/run_tests.sh
 ```
 
-Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`, `tests/test_phase1a.gd`, `tests/test_phase1b.gd`.
+Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`, `tests/test_phase1a.gd`, `tests/test_phase1b.gd`, `tests/test_phase1c.gd`.
 
 ## Debug APK / AAB
 
@@ -136,9 +155,9 @@ godot --headless --path . --export-debug "Android AAB" build/android/phase0c-deb
 
 Do not commit APK / AAB / keystores / production AdMob IDs / UMP device hashes.
 
-### Phase 1-A / 1-B AAB re-export
+### Phase 1-A / 1-B / 1-C AAB re-export
 
-AAB re-export was **skipped** for Phase 1-A and Phase 1-B closeout for these reasons:
+AAB re-export was **skipped** for Phase 1-A through 1-C closeout for these reasons:
 
 - No Android Gradle configuration changes
 - No `export_presets.cfg` changes
