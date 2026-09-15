@@ -194,15 +194,49 @@ func test_refill_only_after_third_consume() -> void:
 
 
 func test_refill_sequence_is_seed_reproducible() -> void:
-	var a := GameSession.create(4, 4, _mono_generator(99))
-	var b := GameSession.create(4, 4, _mono_generator(99))
+	## Multi-piece catalog so seed actually affects which shapes appear (not mono-only).
+	var catalog_pieces: Array = [
+		PieceShape.create_single_cell(),
+		PieceShape.create([Vector2i(0, 0), Vector2i(1, 0)]),
+		PieceShape.create([Vector2i(0, 0), Vector2i(0, 1), Vector2i(1, 1)]),
+	]
+	var a := GameSession.create(8, 8, _catalog_generator(catalog_pieces, 99))
+	var b := GameSession.create(8, 8, _catalog_generator(catalog_pieces, 99))
+	assert_eq(_snapshot_tray(a), _snapshot_tray(b))
+	# Same legal mono-safe origins far apart; works for any of the small test shapes.
+	var origins: Array[Vector2i] = [Vector2i(0, 0), Vector2i(4, 0), Vector2i(0, 4)]
 	for slot in [0, 1, 2]:
-		assert_true(a.place_from_slot(slot, Vector2i(slot, 0)).success)
-		assert_true(b.place_from_slot(slot, Vector2i(slot, 0)).success)
-	assert_true(a.place_from_slot(0, Vector2i(0, 1)).success)
-	assert_true(b.place_from_slot(0, Vector2i(0, 1)).success)
+		assert_true(a.place_from_slot(slot, origins[slot]).success)
+		assert_true(b.place_from_slot(slot, origins[slot]).success)
+	assert_eq(a.remaining_piece_count(), 3)
+	assert_eq(b.remaining_piece_count(), 3)
 	assert_eq(_snapshot_tray(a), _snapshot_tray(b))
 	assert_eq(a.occupied_cells(), b.occupied_cells())
+
+
+func test_game_over_when_exactly_one_remaining_piece_cannot_place() -> void:
+	## 3x2 + diagonal: two successful places leave remaining_count==1 unplaceable (no refill).
+	var diagonal := PieceShape.create([Vector2i(0, 0), Vector2i(1, 1)])
+	var session := GameSession.create(3, 2, _catalog_generator([diagonal]))
+	assert_eq(session.status(), GameSession.Status.ACTIVE)
+	assert_eq(session.remaining_piece_count(), 3)
+
+	var first := session.place_from_slot(0, Vector2i(0, 0))
+	assert_true(first.success)
+	assert_false(first.tray_refilled)
+	assert_false(first.game_over_after_move)
+	assert_eq(session.status(), GameSession.Status.ACTIVE)
+	assert_eq(session.remaining_piece_count(), 2)
+
+	var second := session.place_from_slot(1, Vector2i(1, 0))
+	assert_true(second.success)
+	assert_false(second.tray_refilled)
+	assert_true(second.game_over_after_move)
+	assert_eq(session.status(), GameSession.Status.GAME_OVER)
+	assert_eq(session.remaining_piece_count(), 1)
+	assert_true(session.has_piece(2))
+	assert_false(session.has_piece(0))
+	assert_false(session.has_piece(1))
 
 
 func test_game_over_when_remaining_pieces_cannot_place() -> void:
