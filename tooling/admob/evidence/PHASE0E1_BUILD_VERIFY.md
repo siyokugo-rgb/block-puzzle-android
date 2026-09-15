@@ -12,3 +12,12 @@ Date: 2026-09-15 (Scenario A FIX FIRST rebuild)
 - Debug geo: fixed `keys()[enum_value]` mislabel (`OTHER` vs `REGULATED_US_STATE`)
 - Fail-closed ads gate retained (`canRequestAds=false` still blocks banner)
 - Phase 0-E overall: **FIX FIRST** until Xperia Scenario A re-verified
+
+## Cloud regression (Scenario A fix)
+
+- GUT: **13/13 PASS** (0-B / 0-D / 0-E)
+- APK: `build/android/phase0e-debug.apk` SUCCESS
+  - SHA-256: `0f9a05076ac5dabbe6a86fabd6ecb065483f5e0f48feeeb8658a83f5fbefc4bd`
+- AAB: `build/android/phase0c-debug.aab` SUCCESS (regression)
+- Dex contains: `can_request_ads`, `get_ump_consent_snapshot`
+

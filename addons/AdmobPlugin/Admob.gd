@@ -1270,8 +1270,8 @@ func reset_consent_info() -> void:
 
 func can_request_ads() -> bool:
 	# Call native directly (same pattern as get_consent_status / is_consent_form_available).
-	# Do not gate on has_method(): Godot Android plugin singletons may not advertise
-	# @UsedByGodot methods via has_method, which previously forced a false fail-closed path.
+	# Do not probe method existence on the Android plugin singleton first: that probe can
+	# miss @UsedByGodot exports and previously forced a false fail-closed path.
 	if _plugin_singleton == null:
 		GmpLogger.log_error("%s plugin not initialized" % PLUGIN_SINGLETON_NAME)
 		return false

@@ -63,11 +63,13 @@ func test_phase0e_admob_wrapper_exposes_ump_current_apis() -> void:
 	assert_true(src.find("func show_privacy_options_form()") >= 0)
 	assert_true(src.find("func get_ump_consent_snapshot()") >= 0)
 	assert_true(src.find("signal privacy_options_form_dismissed") >= 0)
-	# Regression: do not fail-closed via has_method on Android plugin singletons.
+	# Regression: wrappers must call native UMP APIs directly (no method-existence probe).
 	var can_fn_start := src.find("func can_request_ads()")
 	var can_fn_end := src.find("func get_privacy_options_requirement_status()")
 	assert_true(can_fn_start >= 0 and can_fn_end > can_fn_start)
-	assert_true(src.substr(can_fn_start, can_fn_end - can_fn_start).find("has_method(") < 0)
+	var can_fn_body := src.substr(can_fn_start, can_fn_end - can_fn_start)
+	assert_true(can_fn_body.find("has_method") < 0)
+	assert_true(can_fn_body.find("_plugin_singleton.can_request_ads()") >= 0)
 
 
 func test_phase0e_debug_geography_label_uses_enum_value_not_keys_index() -> void:
