@@ -97,9 +97,10 @@ layout_mode = 2
 disabled = true
 text = "4) Request Test Banner (if allowed)"
 
-[node name="PrivacyProbeButton" type="Button" parent="Buttons"]
+[node name="PrivacyOptionsButton" type="Button" parent="Buttons"]
 layout_mode = 2
-text = "Probe Privacy Options API"
+disabled = true
+text = "5) Show Privacy Options Form"
 
 [node name="TapButton" type="Button" parent="Buttons"]
 layout_mode = 2
@@ -148,5 +149,5 @@ test_device_hashed_ids = Array[String]([])
 [connection signal="pressed" from="Buttons/ShowFormButton" to="." method="_on_show_form_button_pressed"]
 [connection signal="pressed" from="Buttons/ResetConsentButton" to="." method="_on_reset_consent_button_pressed"]
 [connection signal="pressed" from="Buttons/RequestBannerButton" to="." method="_on_request_banner_button_pressed"]
-[connection signal="pressed" from="Buttons/PrivacyProbeButton" to="." method="_on_privacy_probe_button_pressed"]
+[connection signal="pressed" from="Buttons/PrivacyOptionsButton" to="." method="_on_privacy_options_button_pressed"]
 [connection signal="pressed" from="Buttons/TapButton" to="." method="_on_tap_button_pressed"]

@@ -60,6 +60,7 @@ signal consent_form_dismissed(error_data: FormError)
 signal consent_form_failed_to_load(error_data: FormError)
 signal consent_info_updated
 signal consent_info_update_failed(error_data: FormError)
+signal privacy_options_form_dismissed(error_data: FormError)
 signal tracking_authorization_granted
 signal tracking_authorization_denied
 
@@ -561,6 +562,8 @@ func _connect_signals() -> void:
 	_plugin_singleton.connect("consent_form_failed_to_load", _on_consent_form_failed_to_load)
 	_plugin_singleton.connect("consent_info_updated", _on_consent_info_updated)
 	_plugin_singleton.connect("consent_info_update_failed", _on_consent_info_update_failed)
+	if _plugin_singleton.has_signal("privacy_options_form_dismissed"):
+		_plugin_singleton.connect("privacy_options_form_dismissed", _on_privacy_options_form_dismissed)
 	if _plugin_singleton.has_signal("tracking_authorization_granted"):
 		_plugin_singleton.connect("tracking_authorization_granted", _on_tracking_authorization_granted)
 	if _plugin_singleton.has_signal("tracking_authorization_denied"):
@@ -1265,6 +1268,36 @@ func reset_consent_info() -> void:
 		_plugin_singleton.reset_consent_info()
 
 
+func can_request_ads() -> bool:
+	if _plugin_singleton == null:
+		GmpLogger.log_error("%s plugin not initialized" % PLUGIN_SINGLETON_NAME)
+		return false
+	if not _plugin_singleton.has_method("can_request_ads"):
+		GmpLogger.log_error("%s missing can_request_ads()" % PLUGIN_SINGLETON_NAME)
+		return false
+	return bool(_plugin_singleton.can_request_ads())
+
+
+func get_privacy_options_requirement_status() -> PrivacyOptionsRequirementStatus:
+	var __result: String = ""
+	if _plugin_singleton == null:
+		GmpLogger.log_error("%s plugin not initialized" % PLUGIN_SINGLETON_NAME)
+	elif not _plugin_singleton.has_method("get_privacy_options_requirement_status"):
+		GmpLogger.log_error("%s missing get_privacy_options_requirement_status()" % PLUGIN_SINGLETON_NAME)
+	else:
+		__result = _plugin_singleton.get_privacy_options_requirement_status()
+	return PrivacyOptionsRequirementStatus.new(__result)
+
+
+func show_privacy_options_form() -> void:
+	if _plugin_singleton == null:
+		GmpLogger.log_error("%s plugin not initialized" % PLUGIN_SINGLETON_NAME)
+	elif not _plugin_singleton.has_method("show_privacy_options_form"):
+		GmpLogger.log_error("%s missing show_privacy_options_form()" % PLUGIN_SINGLETON_NAME)
+	else:
+		_plugin_singleton.show_privacy_options_form()
+
+
 func set_mediation_privacy_settings(privacySettings: NetworkPrivacySettings) -> void:
 	if _plugin_singleton == null:
 		GmpLogger.log_error("%s plugin not initialized" % PLUGIN_SINGLETON_NAME)
@@ -1534,6 +1567,10 @@ func _on_consent_info_updated() -> void:
 
 func _on_consent_info_update_failed(error_data: Dictionary) -> void:
 	consent_info_update_failed.emit(FormError.new(error_data))
+
+
+func _on_privacy_options_form_dismissed(error_data: Dictionary) -> void:
+	privacy_options_form_dismissed.emit(FormError.new(error_data))
 
 
 func _on_tracking_authorization_granted() -> void:

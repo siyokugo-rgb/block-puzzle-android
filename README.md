@@ -19,22 +19,16 @@ Game systems (Board / Piece / Score / production Ads / etc.) are **not** impleme
 
 ## Phase 0-E: UMP consent gate (Technical Spike)
 
-API audit: `tooling/admob/UMP_API_AUDIT.md`
+API audit: `tooling/admob/UMP_API_AUDIT.md`  
+Native patch reproducibility: `tooling/admob/native-patch/README.md`
 
 - Consent update / status / form load-show / reset: available in v7.0
-- **`canRequestAds` equivalent: NOT available** (GDScript + AAR)
-- **Privacy options status/form: NOT available**
-- Ads requested only after fail-closed gate allow (`NOT_REQUIRED` / `OBTAINED` after successful update)
-- `SPIKE_AUTO_START_ADS=false` (Phase 0-D unconditional auto ads disabled)
+- Phase 0-E.1 patch adds: `can_request_ads`, privacy-options status/form + dismiss signal
+- Ads requested only when native `canRequestAds()` is true after an update attempt completes
+- `SPIKE_AUTO_START_ADS=false`
 - UMP test device hash: runtime LineEdit only — never committed
 - Google test App ID / Banner ID only
-
-```bash
-godot --headless --path . --import
-godot --headless --path . --install-android-build-template
-./tooling/android-gradle/apply_overlay.sh
-godot --headless --path . --export-debug Android build/android/phase0e-debug.apk
-```
+- Phase 0-E overall remains **FIX FIRST / not COMPLETE** until Xperia verification
 
 ## Phase 0-D: AdMob Test Banner (Technical Spike)
 
