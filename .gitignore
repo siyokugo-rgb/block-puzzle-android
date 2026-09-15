@@ -1,0 +1,30 @@
+# Godot generated
+.godot/
+*.translation
+
+# Export credentials and secrets (never commit)
+export_credentials.cfg
+*.keystore
+*.jks
+*.p12
+*.pem
+*.key
+local.properties
+
+# Android Gradle template output (installed from 4.7.2 export templates)
+android/build/
+android/.gradle/
+android/**/.gradle/
+android/**/build/
+
+# Build artifacts
+build/android/*.apk
+build/android/*.aab
+build/android/*.idsig
+*.apk
+*.aab
+*.idsig
+
+# OS
+.DS_Store
+Thumbs.db
