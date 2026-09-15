@@ -92,3 +92,53 @@ func test_phase0e_debug_geography_label_uses_enum_value_not_keys_index() -> void
 func test_phase0e_patched_aars_present() -> void:
 	assert_true(FileAccess.file_exists("res://addons/AdmobPlugin/bin/debug/AdmobPlugin-debug.aar"))
 	assert_true(FileAccess.file_exists("res://addons/AdmobPlugin/bin/release/AdmobPlugin-release.aar"))
+
+
+func test_phase0e_allowed_to_blocked_requires_banner_cleanup() -> void:
+	assert_true(
+		ConsentGate.should_cleanup_on_decision_change(true, false)
+	)
+	assert_false(
+		ConsentGate.should_cleanup_on_decision_change(false, false)
+	)
+	assert_false(
+		ConsentGate.should_cleanup_on_decision_change(true, true)
+	)
+	assert_true(ConsentGate.should_cleanup_active_banner(false, true))
+	assert_false(ConsentGate.should_cleanup_active_banner(true, true))
+	assert_false(ConsentGate.should_cleanup_active_banner(false, false))
+
+
+func test_phase0e_reset_path_uses_remove_banner_cleanup() -> void:
+	var src := FileAccess.get_file_as_string("res://scripts/main.gd")
+	assert_true(src.find("func _remove_active_banner_if_any(") >= 0)
+	assert_true(src.find("func _apply_ads_decision(") >= 0)
+	assert_true(src.find("_apply_ads_decision(ConsentGate.initial_decision(), \"consent reset\")") >= 0)
+	assert_true(src.find("remove_banner_ad") >= 0)
+	# Must not clear banner id before remove on reset.
+	var reset_start := src.find("func _on_reset_consent_button_pressed()")
+	var reset_end := src.find("func _on_request_banner_button_pressed()")
+	assert_true(reset_start >= 0 and reset_end > reset_start)
+	var reset_body := src.substr(reset_start, reset_end - reset_start)
+	assert_true(reset_body.find("_apply_ads_decision(") >= 0)
+	assert_true(reset_body.find("_last_banner_ad_id = \"\"") < 0)
+
+
+func test_phase0e_delayed_banner_loaded_while_blocked_is_discarded() -> void:
+	assert_true(ConsentGate.should_discard_loaded_banner(false))
+	assert_false(ConsentGate.should_discard_loaded_banner(true))
+	var src := FileAccess.get_file_as_string("res://scripts/main.gd")
+	assert_true(src.find("delayed load while blocked") >= 0)
+	assert_true(src.find("should_discard_loaded_banner") >= 0)
+
+
+func test_phase0e_duplicate_and_blocked_request_guards_remain() -> void:
+	var src := FileAccess.get_file_as_string("res://scripts/main.gd")
+	assert_true(src.find("duplicate banner request ignored") >= 0)
+	assert_true(src.find("ad request denied by canRequestAds gate") >= 0)
+	assert_eq(
+		ConsentGate.evaluate(true, false),
+		ConsentGate.AdsDecision.BLOCKED_CANNOT_REQUEST_ADS
+	)
+	assert_false(ConsentGate.is_ads_allowed(ConsentGate.evaluate(true, false)))
+	assert_false(ConsentGate.is_ads_allowed(ConsentGate.initial_decision()))

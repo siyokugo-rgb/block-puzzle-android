@@ -59,6 +59,7 @@ func _ready() -> void:
 	_admob.initialization_completed.connect(_on_initialization_completed)
 	_admob.banner_ad_loaded.connect(_on_banner_ad_loaded)
 	_admob.banner_ad_failed_to_load.connect(_on_banner_ad_failed_to_load)
+	_admob.banner_ad_refreshed.connect(_on_banner_ad_refreshed)
 	_admob.banner_ad_impression.connect(_on_banner_ad_impression)
 	_admob.consent_info_updated.connect(_on_consent_info_updated)
 	_admob.consent_info_update_failed.connect(_on_consent_info_update_failed)
@@ -113,11 +114,10 @@ func _on_reset_consent_button_pressed() -> void:
 	_form_loaded = false
 	_form_shown = false
 	_form_dismissed = false
-	_banner_requested = false
-	_last_banner_ad_id = ""
 	_can_request_ads = false
 	_privacy_status_text = "UNKNOWN"
-	_ads_decision = ConsentGate.initial_decision()
+	# Allowed → blocked (and any stuck banner): remove before clearing UMP state.
+	_apply_ads_decision(ConsentGate.initial_decision(), "consent reset")
 	_request_banner_button.disabled = true
 	_show_form_button.disabled = true
 	_privacy_options_button.disabled = true
@@ -155,9 +155,9 @@ func _request_consent_update() -> void:
 	_form_loaded = false
 	_form_shown = false
 	_form_dismissed = false
-	_banner_requested = false
 	_can_request_ads = false
-	_ads_decision = ConsentGate.initial_decision()
+	# Re-entering pre-update blocked must also tear down any active banner.
+	_apply_ads_decision(ConsentGate.initial_decision(), "consent update starting")
 	_request_banner_button.disabled = true
 	_privacy_options_button.disabled = true
 	_set_status("consent info update starting...")
@@ -294,11 +294,15 @@ func _on_initialization_completed(status_data: InitializationStatus) -> void:
 
 
 func _on_banner_ad_loaded(ad_info: AdInfo, _response_info: ResponseInfo) -> void:
+	var loaded_id := ad_info.get_ad_id() if ad_info else ""
+	if not loaded_id.is_empty():
+		_last_banner_ad_id = loaded_id
 	_apply_ump_snapshot("banner loaded")
-	if not ConsentGate.is_ads_allowed(_ads_decision):
-		_append_log("banner loaded but canRequestAds false; not showing")
+	if ConsentGate.should_discard_loaded_banner(ConsentGate.is_ads_allowed(_ads_decision)):
+		_append_log("banner loaded while blocked; discard without show id=%s" % loaded_id)
+		_remove_active_banner_if_any("delayed load while blocked")
+		_refresh_gate_state("blocked delayed banner discarded")
 		return
-	_last_banner_ad_id = ad_info.get_ad_id() if ad_info else ""
 	_set_status("banner loaded id=%s → show" % _last_banner_ad_id)
 	_append_log("banner_ad_loaded")
 	if not _last_banner_ad_id.is_empty():
@@ -313,6 +317,19 @@ func _on_banner_ad_failed_to_load(ad_info: AdInfo, error_data: LoadAdError) -> v
 	_append_log("banner_ad_failed_to_load code=%s msg=%s ad=%s" % [str(code), message, str(ad_info)])
 	_banner_requested = false
 	_request_banner_button.disabled = not ConsentGate.is_ads_allowed(_ads_decision)
+
+
+func _on_banner_ad_refreshed(ad_info: AdInfo, _response_info: ResponseInfo) -> void:
+	var refreshed_id := ad_info.get_ad_id() if ad_info else ""
+	_append_log("banner_ad_refreshed id=%s" % refreshed_id)
+	if ConsentGate.is_ads_allowed(_ads_decision):
+		if not refreshed_id.is_empty():
+			_last_banner_ad_id = refreshed_id
+		return
+	if not refreshed_id.is_empty():
+		_last_banner_ad_id = refreshed_id
+	_remove_active_banner_if_any("banner refreshed while blocked")
+	_refresh_gate_state("blocked refresh discarded")
 
 
 func _on_banner_ad_impression(ad_info: AdInfo) -> void:
@@ -364,7 +381,10 @@ func _apply_ump_snapshot(note: String) -> void:
 				)
 			)
 
-	_ads_decision = ConsentGate.evaluate(_consent_update_completed, _can_request_ads)
+	_apply_ads_decision(
+		ConsentGate.evaluate(_consent_update_completed, _can_request_ads),
+		note
+	)
 	_request_banner_button.disabled = (
 		(not ConsentGate.is_ads_allowed(_ads_decision)) or _banner_requested
 	)
@@ -382,6 +402,48 @@ func _apply_ump_snapshot(note: String) -> void:
 		)
 	)
 	_refresh_gate_state(note)
+
+
+func _has_tracked_or_loaded_banner() -> bool:
+	if not _last_banner_ad_id.is_empty():
+		return true
+	if _admob == null:
+		return false
+	return _admob.is_banner_ad_loaded()
+
+
+func _apply_ads_decision(new_decision: ConsentGate.AdsDecision, reason: String) -> void:
+	var was_allowed := ConsentGate.is_ads_allowed(_ads_decision)
+	var had_banner := _has_tracked_or_loaded_banner()
+	_ads_decision = new_decision
+	var now_allowed := ConsentGate.is_ads_allowed(_ads_decision)
+	if (
+		ConsentGate.should_cleanup_on_decision_change(was_allowed, now_allowed)
+		or ConsentGate.should_cleanup_active_banner(now_allowed, had_banner)
+	):
+		_remove_active_banner_if_any(reason)
+
+
+func _remove_active_banner_if_any(reason: String) -> void:
+	## Tear down display + plugin cache so blocked state cannot keep refreshing.
+	var id := _last_banner_ad_id
+	var removed := false
+	if not id.is_empty():
+		_append_log("remove_banner_ad id=%s reason=%s" % [id, reason])
+		_admob.remove_banner_ad(id)
+		removed = true
+	var guard := 0
+	while _admob.is_banner_ad_loaded() and guard < 16:
+		_append_log("remove_banner_ad cache_remainder reason=%s" % reason)
+		_admob.remove_banner_ad()
+		removed = true
+		guard += 1
+	_last_banner_ad_id = ""
+	_banner_requested = false
+	if removed:
+		_append_log("active banner removed (%s)" % reason)
+	else:
+		_append_log("no active banner to remove (%s)" % reason)
 
 
 func _read_consent_status_text() -> String:

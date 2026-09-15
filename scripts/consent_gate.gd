@@ -32,3 +32,19 @@ static func evaluate(update_completed: bool, can_request_ads: bool) -> AdsDecisi
 
 static func initial_decision() -> AdsDecision:
 	return AdsDecision.BLOCKED_PRE_UPDATE
+
+
+## Allowed → blocked means any already-shown / in-flight banner must be removed.
+static func should_cleanup_on_decision_change(was_allowed: bool, now_allowed: bool) -> bool:
+	return was_allowed and not now_allowed
+
+
+## While blocked, a still-tracked or plugin-cached banner must be removed
+## (covers reset, stuck display, and delayed load races).
+static func should_cleanup_active_banner(now_allowed: bool, has_active_banner: bool) -> bool:
+	return (not now_allowed) and has_active_banner
+
+
+## Delayed banner_ad_loaded after gate blocked: never show; discard via remove.
+static func should_discard_loaded_banner(now_allowed: bool) -> bool:
+	return not now_allowed
