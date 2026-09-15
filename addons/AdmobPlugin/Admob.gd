@@ -60,6 +60,7 @@ signal consent_form_dismissed(error_data: FormError)
 signal consent_form_failed_to_load(error_data: FormError)
 signal consent_info_updated
 signal consent_info_update_failed(error_data: FormError)
+signal privacy_options_form_dismissed(error_data: FormError)
 signal tracking_authorization_granted
 signal tracking_authorization_denied
 
@@ -561,6 +562,8 @@ func _connect_signals() -> void:
 	_plugin_singleton.connect("consent_form_failed_to_load", _on_consent_form_failed_to_load)
 	_plugin_singleton.connect("consent_info_updated", _on_consent_info_updated)
 	_plugin_singleton.connect("consent_info_update_failed", _on_consent_info_update_failed)
+	if _plugin_singleton.has_signal("privacy_options_form_dismissed"):
+		_plugin_singleton.connect("privacy_options_form_dismissed", _on_privacy_options_form_dismissed)
 	if _plugin_singleton.has_signal("tracking_authorization_granted"):
 		_plugin_singleton.connect("tracking_authorization_granted", _on_tracking_authorization_granted)
 	if _plugin_singleton.has_signal("tracking_authorization_denied"):
@@ -1265,6 +1268,40 @@ func reset_consent_info() -> void:
 		_plugin_singleton.reset_consent_info()
 
 
+func can_request_ads() -> bool:
+	# Call native directly (same pattern as get_consent_status / is_consent_form_available).
+	# Do not probe method existence on the Android plugin singleton first: that probe can
+	# miss @UsedByGodot exports and previously forced a false fail-closed path.
+	if _plugin_singleton == null:
+		GmpLogger.log_error("%s plugin not initialized" % PLUGIN_SINGLETON_NAME)
+		return false
+	return bool(_plugin_singleton.can_request_ads())
+
+
+func get_privacy_options_requirement_status() -> PrivacyOptionsRequirementStatus:
+	var __result: String = ""
+	if _plugin_singleton == null:
+		GmpLogger.log_error("%s plugin not initialized" % PLUGIN_SINGLETON_NAME)
+	else:
+		__result = str(_plugin_singleton.get_privacy_options_requirement_status())
+	return PrivacyOptionsRequirementStatus.new(__result)
+
+
+func get_ump_consent_snapshot() -> Dictionary:
+	## Native atomic UMP snapshot for diagnostics (Phase 0-E). Empty if plugin missing.
+	if _plugin_singleton == null:
+		GmpLogger.log_error("%s plugin not initialized" % PLUGIN_SINGLETON_NAME)
+		return {}
+	var snapshot: Variant = _plugin_singleton.get_ump_consent_snapshot()
+	return snapshot if typeof(snapshot) == TYPE_DICTIONARY else {}
+
+
+func show_privacy_options_form() -> void:
+	if _plugin_singleton == null:
+		GmpLogger.log_error("%s plugin not initialized" % PLUGIN_SINGLETON_NAME)
+	else:
+		_plugin_singleton.show_privacy_options_form()
+
 func set_mediation_privacy_settings(privacySettings: NetworkPrivacySettings) -> void:
 	if _plugin_singleton == null:
 		GmpLogger.log_error("%s plugin not initialized" % PLUGIN_SINGLETON_NAME)
@@ -1534,6 +1571,10 @@ func _on_consent_info_updated() -> void:
 
 func _on_consent_info_update_failed(error_data: Dictionary) -> void:
 	consent_info_update_failed.emit(FormError.new(error_data))
+
+
+func _on_privacy_options_form_dismissed(error_data: Dictionary) -> void:
+	privacy_options_form_dismissed.emit(FormError.new(error_data))
 
 
 func _on_tracking_authorization_granted() -> void:
