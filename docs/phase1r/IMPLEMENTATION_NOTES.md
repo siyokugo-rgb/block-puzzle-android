@@ -3,6 +3,20 @@
 Branch: `cursor/phase-ra-puzzle-board-b8da`  
 Scope: `OrbType` / `PuzzleCell` / `PuzzleBoard` / `OrbGenerator` / match-stable initial fill only.
 
+## Roadmap alignment (post Phase 1-R)
+
+| Phase | Scope |
+| --- | --- |
+| **R-A** (this) | OrbType / PuzzleCell / PuzzleBoard / OrbGenerator / stable initial fill |
+| **R-B** | DragRoute / 4-direction swap semantics only (no match resolve) |
+| **R-C** | MatchResolver / orthogonal ≥3 / simultaneous clear set |
+| **R-D** | GravityResolver / refill / CascadeResolver / finite safety guard |
+| **R-E** | PuzzleSession / timer / mid-drag forced release / provisional Score (**Score formula locked before R-E starts**) |
+| **R-F** | Minimal Puzzle UI / Android touch / playable Score Attack / 45·60·90 device comparison |
+| **Gate 1** | After R-F Android playable COMPLETE |
+| Post R-F | Legacy Block Placement deletion decision |
+| Post Gate 1 | ROCK (then LOCK / SLIME / …) |
+
 ## Paths
 
 | Type | Path |
@@ -25,6 +39,17 @@ Legacy `scripts/game/*` unchanged.
 - Rejects: OOB, same cell, diagonal, distance > 1, either cell empty
 - Failure is atomic (board unchanged)
 
+## PuzzleCell
+
+- `with_orb(valid_id)` → `PuzzleCell`
+- `with_orb(invalid_id)` → `null` (never silent empty)
+- `set_orb(invalid)` → false; existing orb unchanged
+
+## Match detection
+
+- **Not** on `PuzzleBoard` in R-A (MatchResolver = R-C)
+- Stable-fill tests use test-local `_has_orthogonal_run(snapshot, min_len)`
+
 ## RNG
 
 - Injected / owned `RandomNumberGenerator`
@@ -33,6 +58,8 @@ Legacy `scripts/game/*` unchanged.
 - No dependency on global `randi()`
 
 ## Initial fill order (RNG consumption order) — FIXED
+
+Precondition: board is **valid and entirely empty**. If any orb is present → `fill_match_stable` returns `false`, board unchanged, **no RNG consumption**.
 
 Row-major:
 

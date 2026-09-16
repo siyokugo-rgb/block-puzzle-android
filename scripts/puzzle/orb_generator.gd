@@ -55,7 +55,9 @@ func generate_from_candidates(candidates: Array) -> int:
 	return id
 
 
-## Match-stable initial fill for an existing empty valid board.
+## Match-stable initial fill for an existing **valid empty** board.
+## Precondition: every cell empty. If any orb is already present → false,
+## board unchanged, and no RNG consumption.
 ## Scan order (RNG consumption order): y outer 0..h-1, x inner 0..w-1 (row-major).
 ## At each cell, exclude types that would complete a ≥3 run with the two cells
 ## immediately left and/or the two cells immediately above; then pick among rest.
@@ -68,6 +70,11 @@ func fill_match_stable(board: PuzzleBoard) -> bool:
 		return false
 	var w := board.width()
 	var h := board.height()
+	# Empty-board precondition — reject without consuming RNG.
+	for y in range(h):
+		for x in range(w):
+			if board.has_orb(Vector2i(x, y)):
+				return false
 	for y in range(h):
 		for x in range(w):
 			var candidates := _stable_candidates(board, Vector2i(x, y))

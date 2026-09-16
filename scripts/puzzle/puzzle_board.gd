@@ -110,39 +110,6 @@ func snapshot_orb_ids() -> Array:
 	return out
 
 
-## True if any orthogonal run of length >= 3 exists.
-func has_match_of_length_at_least(min_len: int = 3) -> bool:
-	if not _valid or min_len <= 0:
-		return false
-	# Rows
-	for y in range(_height):
-		var run := 1
-		var prev := orb_at(Vector2i(0, y))
-		for x in range(1, _width):
-			var cur := orb_at(Vector2i(x, y))
-			if cur >= 0 and cur == prev:
-				run += 1
-				if run >= min_len:
-					return true
-			else:
-				run = 1
-				prev = cur
-	# Columns
-	for x in range(_width):
-		var run := 1
-		var prev := orb_at(Vector2i(x, 0))
-		for y in range(1, _height):
-			var cur := orb_at(Vector2i(x, y))
-			if cur >= 0 and cur == prev:
-				run += 1
-				if run >= min_len:
-					return true
-			else:
-				run = 1
-				prev = cur
-	return false
-
-
 func _build(width: int, height: int) -> void:
 	_width = 0
 	_height = 0

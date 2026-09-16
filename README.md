@@ -7,7 +7,7 @@ Phase 1-D (PR #8) attempted a playable placement slice — **SUPERSEDED** by pro
 
 **Phase 1-R** freezes the new **Route-Drag Match Puzzle** contracts (docs only): see [`docs/phase1r/README.md`](docs/phase1r/README.md).
 
-Legacy Block Placement types remain on `main` until post–R-D cleanup. Phase 0 Ads/UMP/Android/GUT must not be broken.
+Legacy Block Placement types remain on `main` until post–**R-F** cleanup. Phase 0 Ads/UMP/Android/GUT must not be broken.
 
 ## Status
 
@@ -24,7 +24,7 @@ Legacy Block Placement types remain on `main` until post–R-D cleanup. Phase 0 
 | 1-C Game session / tray lifecycle / Game Over | COMPLETE (legacy; SUPERSEDED direction) |
 | 1-D Minimal playable placement slice | SUPERSEDED / REDESIGN — PR #8 closed unmerged |
 | 1-R Route-drag match redesign (docs) | COMPLETE |
-| R-A PuzzleBoard / Orb / stable initial fill | in progress (Draft PR) |
+| R-A PuzzleBoard / Orb / stable initial fill | COMPLETE (Draft PR) |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
@@ -99,9 +99,11 @@ Summary of locked direction:
 - Seedable RNG; no input + timer pause during resolve
 - Mid-drag timer=0 → stop steps; ≥1 swap forced release→resolve→SESSION_OVER; 0 swaps→SESSION_OVER (**no rollback**)
 - First mode: **Score Attack** (DEV default **60s**; 45/60/90 until device compare)
-- Provisional **Score formula required before R-D Score Attack implementation**
-- `OrbType` = orbs only; obstacles (`ROCK`/`LOCK`/`SLIME`) separate on `PuzzleCell`
-- Legacy Block Placement domain kept until R-D playable COMPLETE
+- Provisional **Score formula required before R-E implementation starts**
+- `OrbType` = orbs only; obstacles (`ROCK`/`LOCK`/`SLIME`) separate on `PuzzleCell` (ROCK after Gate 1)
+- Legacy Block Placement domain kept until **R-F** playable COMPLETE
+
+Roadmap (post–1-R): **R-A** board/fill → **R-B** DragRoute → **R-C** MatchResolver → **R-D** gravity/refill/cascade → **R-E** PuzzleSession/timer/score → **R-F** UI/Android playable → **Gate 1**
 
 **Do not start R-A until Phase 1-R docs PR is accepted.**
 
@@ -115,7 +117,9 @@ Summary of locked direction:
 | `OrbGenerator` | `scripts/puzzle/orb_generator.gd` |
 | Notes | [`docs/phase1r/IMPLEMENTATION_NOTES.md`](docs/phase1r/IMPLEMENTATION_NOTES.md) |
 
-- Match-stable initial fill: row-major `y` outer / `x` inner; left-2 / up-2 exclusion; seeded `randi_range`
+- Match-stable initial fill: row-major `y` outer / `x` inner; left-2 / up-2 exclusion; seeded `randi_range`; **empty-board precondition**
+- `PuzzleCell.with_orb(invalid)` → `null` (not silent empty)
+- Match detection is **not** on `PuzzleBoard` (test-side helper only; MatchResolver = R-C)
 - Legacy `scripts/game/*` untouched
 - Drag / Match / Gravity / Cascade / Timer / Score / Obstacles / UI: **not** in R-A
 

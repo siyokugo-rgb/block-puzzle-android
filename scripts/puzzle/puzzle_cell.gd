@@ -12,9 +12,12 @@ static func empty() -> PuzzleCell:
 
 
 static func with_orb(orb_id: int) -> PuzzleCell:
+	## Returns a cell with the orb, or null if orb_id is not a valid DEV OrbType.
+	## Invalid ids must not be silently treated as empty.
+	if not OrbType.is_dev_id(orb_id):
+		return null
 	var cell := PuzzleCell.new()
-	if OrbType.is_dev_id(orb_id):
-		cell._orb_id = orb_id
+	cell._orb_id = orb_id
 	return cell
 
 
