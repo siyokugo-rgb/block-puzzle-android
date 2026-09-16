@@ -276,7 +276,7 @@ Refill during cascade is **not** required to be match-stable cell-by-cell (casca
 
 ### 10.4 Refill
 
-- For each empty cell after gravity, assign a new orb from `OrbGenerator` in a **deterministic order** (recommended: left→right `x`, within column top→bottom `y`). Fix exact loop in R-A tests and keep it stable.
+- For each empty cell after gravity, assign a new orb from `OrbGenerator` in a **deterministic order** (recommended: left→right `x`, within column top→bottom `y`). Fix exact loop in **R-D** tests and keep it stable.
 
 ### 10.5 Cascade + safety guard
 
