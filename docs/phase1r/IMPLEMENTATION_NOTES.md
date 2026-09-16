@@ -31,6 +31,9 @@
 | `CascadeResolver` | `scripts/puzzle/cascade_resolver.gd` | R-D |
 | `PuzzleSession` | `scripts/puzzle/puzzle_session.gd` | R-E |
 | `SessionMoveResult` | `scripts/puzzle/session_move_result.gd` | R-E |
+| `BoardGeometry` | `scripts/puzzle/board_geometry.gd` | R-F |
+| `GridInputMapper` | `scripts/puzzle/grid_input_mapper.gd` | R-F |
+| `PuzzleGameView` | `scripts/puzzle_ui/puzzle_game_view.gd` | R-F |
 
 Legacy `scripts/game/*` unchanged.
 
