@@ -1,6 +1,6 @@
 # Phase R-E0 — Provisional Score / Timer Contract
 
-**Status:** COMPLETE (docs / contracts only)  
+**Status:** COMPLETE (docs / contracts only) — implemented by Phase R-E `PuzzleSession`  
 **Scope:** Lock Gate 1 Score Attack provisional scoring and domain timer/session contracts **before** R-E `PuzzleSession` implementation.  
 **Code:** **No** GDScript gameplay changes in R-E0.
 

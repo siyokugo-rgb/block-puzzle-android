@@ -28,7 +28,8 @@ Legacy Block Placement types remain on `main` until post–**R-F** cleanup. Phas
 | R-B DragRoute / 4-dir route swap | COMPLETE |
 | R-C MatchResolver / orthogonal clear | COMPLETE |
 | R-D Gravity / refill / cascade | COMPLETE |
-| R-E0 Provisional Score / Timer contract (docs) | COMPLETE (this branch; Draft PR) |
+| R-E0 Provisional Score / Timer contract (docs) | COMPLETE |
+| R-E PuzzleSession / timer / score | COMPLETE (this branch; Draft PR) |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
@@ -179,6 +180,20 @@ Roadmap (post–1-R): **R-A** board/fill → **R-B** DragRoute → **R-C** Match
 - Timer SoT = integer ms; DEV 45000 / 60000 / 90000
 - Session states locked for R-E; **no** gameplay GDScript in R-E0
 
+## Phase R-E PuzzleSession
+
+| Type | Path |
+| --- | --- |
+| `PuzzleSession` | `scripts/puzzle/puzzle_session.gd` |
+| `SessionMoveResult` | `scripts/puzzle/session_move_result.gd` |
+| Notes | [`docs/phase1r/IMPLEMENTATION_NOTES.md`](docs/phase1r/IMPLEMENTATION_NOTES.md) (R-E section) |
+| Contract | [`docs/phase1r/SCORE_TIMER_CONTRACT.md`](docs/phase1r/SCORE_TIMER_CONTRACT.md) |
+
+- Owns board + generator + drag + timer + score (no UI)
+- Continuous RNG stream; provisional Score with checked int64 arithmetic
+- Mid-drag expiry forced release; ERROR fail-closed
+- UI / touch / Scene: **not** in R-E
+
 ## Versions
 
 - Godot **4.7.2** stable (Standard / GDScript)
@@ -243,7 +258,7 @@ API audit: `tooling/admob/UMP_API_AUDIT.md`
 ./tooling/gut/run_tests.sh
 ```
 
-Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`, `tests/test_phase1a.gd`, `tests/test_phase1b.gd`, `tests/test_phase1c.gd`, `tests/test_phase_ra.gd`, `tests/test_phase_rb.gd`, `tests/test_phase_rc.gd`, `tests/test_phase_rd.gd`.
+Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`, `tests/test_phase1a.gd`, `tests/test_phase1b.gd`, `tests/test_phase1c.gd`, `tests/test_phase_ra.gd`, `tests/test_phase_rb.gd`, `tests/test_phase_rc.gd`, `tests/test_phase_rd.gd`, `tests/test_phase_re.gd`.
 
 ## Debug APK / AAB
 
