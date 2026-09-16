@@ -16,6 +16,7 @@ var _elapsed_accumulator_ms: float = 0.0
 var _app_active: bool = true
 var _duration_ms: int = 60000
 var _last_move_note: String = ""
+var _skip_timer_frames: int = 2
 var _hud: VBoxContainer = null
 var _score_label: Label = null
 var _timer_label: Label = null
@@ -40,6 +41,7 @@ func _notification(what: int) -> void:
 	elif what == NOTIFICATION_APPLICATION_FOCUS_IN or what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
 		_app_active = true
 		_elapsed_accumulator_ms = 0.0
+		_skip_timer_frames = 2
 	elif what == NOTIFICATION_RESIZED:
 		queue_redraw()
 
@@ -113,6 +115,7 @@ func _start_session(duration_ms: int) -> void:
 	_session = PuzzleSession.create_score_attack(DEV_WIDTH, DEV_HEIGHT, DEV_SEED, duration_ms)
 	_mapper.clear()
 	_elapsed_accumulator_ms = 0.0
+	_skip_timer_frames = 2
 	_last_move_note = ""
 	_refresh_hud()
 	queue_redraw()
@@ -127,11 +130,20 @@ func _process(delta: float) -> void:
 	if st != PuzzleSession.State.IDLE and st != PuzzleSession.State.ROUTE_DRAG:
 		_refresh_hud()
 		return
+	# Skip startup / focus hitch frames so a huge first delta cannot expire the timer.
+	if _skip_timer_frames > 0:
+		_skip_timer_frames -= 1
+		_elapsed_accumulator_ms = 0.0
+		_refresh_hud()
+		return
 	_elapsed_accumulator_ms += delta * 1000.0
 	var whole_ms := int(floor(_elapsed_accumulator_ms))
 	if whole_ms > 0:
-		_session.advance_time(whole_ms)
 		_elapsed_accumulator_ms -= float(whole_ms)
+		# Cap applied advance; discard hitch excess (do not bank multi-second spikes).
+		if whole_ms > 100:
+			whole_ms = 100
+		_session.advance_time(whole_ms)
 		_refresh_hud()
 		queue_redraw()
 
