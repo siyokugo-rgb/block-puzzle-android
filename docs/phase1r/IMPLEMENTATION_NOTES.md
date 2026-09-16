@@ -337,3 +337,33 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 
 - UI / Scene / Touch / Animation
 - 45/60/90 final pick / ROCK / Save / Ads / legacy delete
+
+---
+
+## Phase R-F — Minimal Android Playable
+
+### SoT
+
+- `PuzzleSession` remains the only game-state owner
+- UI renders `board_snapshot()`; never reimplements match/gravity/score
+
+### Input
+
+- `BoardGeometry`: pixel ↔ cell
+- `GridInputMapper`: pointer ownership (TOUCH vs MOUSE) + orthogonal interpolation
+- Fast jumps expand to adjacent 4-dir steps (tie: X first when `|dx| >= |dy|`)
+- Outside board during drag: no steps, keep route; outside release still `release_drag()` once
+
+### Timer adapter
+
+- Accumulate `delta*1000` remainder; call `advance_time(whole_ms)`
+- Pause when app/window unfocused (no catch-up on resume)
+
+### DEV play
+
+- Seed **42**, 6×6, 5 types, duration buttons 45000/60000/90000 ms
+- Immediate post-resolve redraw (no cascade animation)
+
+### Out of R-F scope
+
+- ROCK / Save / Best Score / production art / complex animation / audio
