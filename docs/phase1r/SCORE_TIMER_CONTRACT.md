@@ -16,7 +16,7 @@ R-D delivered `CascadeResult.cleared_cell_count_per_step_snapshot()` as the neut
 
 R-E0 freezes:
 
-- Provisional Score formula (integer; cascade-depth bonus)
+- Provisional Score formula (signed 64-bit integer; cascade-depth bonus; fail-closed overflow)
 - Timer unit = integer milliseconds
 - DEV durations 45000 / 60000 / 90000 ms
 - Timer ticking / pause states
