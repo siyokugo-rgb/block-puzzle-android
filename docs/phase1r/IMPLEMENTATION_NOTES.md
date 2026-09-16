@@ -1,4 +1,4 @@
-# Phase R-A / R-B / R-C — Implementation notes
+# Phase R-A / R-B / R-C / R-D — Implementation notes
 
 ## Roadmap alignment (post Phase 1-R)
 
@@ -25,6 +25,9 @@
 | `DragRoute` | `scripts/puzzle/drag_route.gd` | R-B |
 | `MatchResult` | `scripts/puzzle/match_result.gd` | R-C |
 | `MatchResolver` | `scripts/puzzle/match_resolver.gd` | R-C |
+| `GravityResolver` | `scripts/puzzle/gravity_resolver.gd` | R-D |
+| `CascadeResult` | `scripts/puzzle/cascade_result.gd` | R-D |
+| `CascadeResolver` | `scripts/puzzle/cascade_resolver.gd` | R-D |
 
 Legacy `scripts/game/*` unchanged.
 
@@ -169,3 +172,87 @@ DEV verification target: **6×6 / 5 OrbType** → no horizontal/vertical ≥3 af
 - GravityResolver / refill / CascadeResolver
 - PuzzleSession / timer / score / combo / specials
 - Obstacles / UI / touch
+
+---
+
+## Phase R-D — Gravity / Refill / Cascade
+
+### Gravity
+
+- Coordinates: `y=0` top, `y=height-1` bottom
+- Each column independent; orbs compact **downward**
+- Empties gather at the **top**
+- Relative vertical order of orbs in a column is **preserved**
+- No orb duplication / loss / cross-column moves
+- Null / invalid board → `apply` returns `false`, no mutation
+- Obstacles / ROCK segment gravity are **out of scope** (post Gate 1)
+
+### Refill order — FIXED
+
+After gravity, empty cells are refilled with:
+
+```
+for x in 0 .. width-1:          # left → right
+  for y in 0 .. height-1:       # top → bottom
+    if board[x,y] empty:
+      orb = generator.generate_orb()
+      board[x,y] = orb
+```
+
+- Deterministic; same seed/state → same consumption order
+- Refill is **not** match-stable (new matches are allowed and become cascade steps)
+- No dedicated RefillResolver class (private helper inside `CascadeResolver`)
+
+### Continuous RNG stream
+
+- Future `PuzzleSession` pattern: one `OrbGenerator` instance → `fill_match_stable` → **same instance** for cascade refill
+- Cascade must **not** reset `generator` seed
+- Do **not** recreate a same-seed generator after initial fill for production play
+
+### Cascade order
+
+```
+steps = 0
+loop:
+  match_result = MatchResolver.detect(board)
+  if invalid → ERROR
+  if no matches → STABLE SUCCESS
+  if steps >= MAX_CASCADE_STEPS → GUARD_EXCEEDED
+  clear_current_matches
+  GravityResolver.apply
+  refill empties (order above)
+  steps += 1
+```
+
+### MAX_CASCADE_STEPS
+
+- `const MAX_CASCADE_STEPS := 128`
+- Safety guard against abnormal infinite loops — **not** a gameplay combo cap
+- Up to **128 successful** resolve steps are allowed
+- Guard fires only when matches still exist **after** those steps (off-by-one: the 128th step is processed)
+- Optional `max_steps` argument on `resolve` is an internal test/seam defaulting to 128 (no production `force_infinite` flag)
+
+### CascadeResult (neutral metrics)
+
+- `is_valid()` / `is_stable()` / `is_guard_exceeded()` / `step_count()` / `total_cleared_cells()`
+- `cleared_cell_count_per_step_snapshot()` — per-step unique cleared cell counts (e.g. `[6,3,8]`)
+- **Score formula is undefined in R-D** (locked before R-E)
+- Combo count / match group count are **not** fixed here
+
+### Error semantics (fail-closed)
+
+ERROR (not stable success):
+
+- null / invalid board or generator
+- detect / clear / gravity / refill failure
+- cascade guard exceeded (`is_guard_exceeded() == true`, `is_valid() == false`)
+
+Invalid inputs are rejected **before** the first detect (no mutation, no RNG).  
+Mid-cascade ERROR does **not** roll back prior steps; the board is not treated as safely continuable.
+
+### Out of R-D scope
+
+- PuzzleSession / Timer / Score / combo formula
+- Drag release integration / UI / touch / Scene
+- ROCK / LOCK / SLIME / Rescue / Animation
+- Ads / Android export changes
