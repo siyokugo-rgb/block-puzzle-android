@@ -335,6 +335,15 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 
 - `advance_time(elapsed_ms)` per R-E0; ticks only `IDLE`/`ROUTE_DRAG`
 - Mid-drag expiry forced release; RESOLVING is sync domain pause (no tick during resolve)
+- **R-F Dual Timer:** Session Timer + per-drag Move Timer (`MOVE_DURATION_MS = 3000`)
+  - `IDLE`: Session ticks; Move inactive (`move_remaining_ms() == 0`)
+  - `ROUTE_DRAG`: both deduct the same `elapsed_ms` (including same-cell hold)
+  - `RESOLVING` / `SESSION_OVER` / `ERROR` / `INVALID`: both paused
+  - Move expiry (`swap_count >= 1`): forced release → resolve → Score → `IDLE` if Session remains
+  - Move expiry (`swap_count == 0`): cancel-equivalent → no cascade → `IDLE` if Session remains
+  - Session expiry during drag wins over Move (including simultaneous 0); one forced release; final `SESSION_OVER`
+  - Next successful `begin_drag` resets Move to 3000 ms
+  - SoT: `PuzzleSession` (`remaining_ms`, `move_remaining_ms`, expiry precedence, forced release)
 
 ### Out of R-E scope
 
@@ -349,6 +358,7 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 
 - `PuzzleSession` remains the only game-state owner
 - UI renders `board_snapshot()`; never reimplements match/gravity/score
+- Move Timer is domain SoT — UI does **not** measure 3s independently
 
 ### Input
 
@@ -356,6 +366,7 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 - `GridInputMapper`: pointer ownership (TOUCH vs MOUSE) + orthogonal interpolation
 - Fast jumps expand to adjacent 4-dir steps (tie: X first when `|dx| >= |dy|`)
 - Outside board during drag: no steps, keep route; outside release still `release_drag()` once
+- Domain forced release (Move/Session expiry) clears pointer ownership in the view adapter
 
 ### Timer adapter
 
@@ -363,13 +374,24 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 - **No per-frame gameplay cap** — active gameplay elapsed is never discarded
 - Pause when app/window unfocused (no catch-up on resume)
 - Startup / focus-return: skip a few frames, reset remainder, and drop at most one abnormal transition spike (>1s)
-- Domain `RESOLVING` still pauses the session timer
+- Domain `RESOLVING` pauses **both** Session and Move timers
+
+### DEV HUD
+
+- `Session: X.Ys` from `remaining_ms()`
+- `Move: X.Ys` only during `ROUTE_DRAG`; otherwise `Move: ---`
+- Optional DEV note when Move/Session expiry forced a release
 
 ### DEV play
 
 - Seed **42**, 6×6, 5 types, duration buttons 45000/60000/90000 ms
 - Immediate post-resolve redraw (no cascade animation)
 
+### Status
+
+- **VERIFY FIRST / FIX FIRST** — Dual Timer gameplay lock; do not merge Draft PR #16; do not start R-G / Gate 1 until device re-verify
+
 ### Out of R-F scope
 
 - ROCK / Save / Best Score / production art / complex animation / audio
+- R-G / Gate 1 start

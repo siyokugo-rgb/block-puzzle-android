@@ -21,7 +21,8 @@ var _skip_timer_frames: int = 2
 var _drop_transition_spike: bool = true
 var _hud: VBoxContainer = null
 var _score_label: Label = null
-var _timer_label: Label = null
+var _session_timer_label: Label = null
+var _move_timer_label: Label = null
 var _state_label: Label = null
 var _note_label: Label = null
 var _duration_row: HBoxContainer = null
@@ -65,9 +66,13 @@ func _build_hud() -> void:
 	_score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hud.add_child(_score_label)
 
-	_timer_label = Label.new()
-	_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_hud.add_child(_timer_label)
+	_session_timer_label = Label.new()
+	_session_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hud.add_child(_session_timer_label)
+
+	_move_timer_label = Label.new()
+	_move_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hud.add_child(_move_timer_label)
 
 	_state_label = Label.new()
 	_state_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -151,7 +156,9 @@ func _process(delta: float) -> void:
 			_refresh_hud()
 			return
 		_drop_transition_spike = false
+		var before_state := _session.state()
 		_session.advance_time(whole_ms)
+		_on_domain_time_advanced(before_state)
 		_refresh_hud()
 		queue_redraw()
 
@@ -303,12 +310,31 @@ func _update_geometry() -> void:
 	_geometry = BoardGeometry.create(origin, cell, DEV_WIDTH, DEV_HEIGHT)
 
 
+## Domain forced release (move/session expiry) may leave the pointer still down.
+func _on_domain_time_advanced(before_state: PuzzleSession.State) -> void:
+	if before_state != PuzzleSession.State.ROUTE_DRAG:
+		return
+	if _session.state() == PuzzleSession.State.ROUTE_DRAG:
+		return
+	_mapper.clear()
+	var reason := _session.last_end_reason()
+	if reason == "move_expiry":
+		_last_move_note = "Move timer expired — forced release"
+	elif reason == "session_expiry":
+		_last_move_note = "Session timer expired — forced release"
+
+
 func _refresh_hud() -> void:
 	if _session == null:
 		return
 	_score_label.text = "Score: %d" % _session.score()
-	var sec := float(_session.remaining_ms()) / 1000.0
-	_timer_label.text = "Time: %.1fs" % sec
+	var session_sec := float(_session.remaining_ms()) / 1000.0
+	_session_timer_label.text = "Session: %.1fs" % session_sec
+	if _session.has_active_move_timer():
+		var move_sec := float(_session.move_remaining_ms()) / 1000.0
+		_move_timer_label.text = "Move: %.1fs" % move_sec
+	else:
+		_move_timer_label.text = "Move: ---"
 	_state_label.text = "State: %s" % _state_name(_session.state())
 	var note := _last_move_note
 	if _session.state() == PuzzleSession.State.SESSION_OVER:

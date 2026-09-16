@@ -1,8 +1,8 @@
 class_name PuzzleSession
 extends RefCounted
 
-## Phase R-E: UI-free Score Attack session integrating board, drag, cascade, score, timer.
-## Owns PuzzleBoard + OrbGenerator privately. No UI / touch / animation.
+## Phase R-E / R-F: UI-free Score Attack session.
+## Owns board, generator, drag, session timer, and per-move timer privately.
 
 enum State {
 	INVALID,
@@ -16,14 +16,19 @@ enum State {
 ## Signed 64-bit maximum (INT64_MAX). Godot `int` is 64-bit.
 const SCORE_MAX := 9223372036854775807
 
+## Per-drag move budget (Phase R-F gameplay lock).
+const MOVE_DURATION_MS := 3000
+
 var _state: State = State.INVALID
 var _board: PuzzleBoard = null
 var _generator: OrbGenerator = null
 var _route: DragRoute = null
 var _remaining_ms: int = 0
+var _move_remaining_ms: int = 0
 var _score: int = 0
 var _max_cascade_steps: int = CascadeResolver.MAX_CASCADE_STEPS
 var _expiry_handled: bool = false
+var _last_end_reason: String = ""
 
 
 ## Create a Score Attack session. Uses one OrbGenerator for fill + later cascade refill.
@@ -52,9 +57,11 @@ func _build(
 	_generator = null
 	_route = null
 	_remaining_ms = 0
+	_move_remaining_ms = 0
 	_score = 0
 	_max_cascade_steps = max_cascade_steps
 	_expiry_handled = false
+	_last_end_reason = ""
 
 	if width <= 0 or height <= 0:
 		return
@@ -79,6 +86,7 @@ func _build(
 	_board = board
 	_generator = generator
 	_remaining_ms = duration_ms
+	_move_remaining_ms = 0
 	_score = 0
 	_state = State.IDLE
 
@@ -96,6 +104,22 @@ func is_valid() -> bool:
 
 func remaining_ms() -> int:
 	return _remaining_ms
+
+
+## Active only during ROUTE_DRAG; otherwise 0 (UI may show "---").
+func move_remaining_ms() -> int:
+	if _state != State.ROUTE_DRAG:
+		return 0
+	return _move_remaining_ms
+
+
+func has_active_move_timer() -> bool:
+	return _state == State.ROUTE_DRAG
+
+
+## DEV/UI note for last forced end reason ("", "move_expiry", "session_expiry").
+func last_end_reason() -> String:
+	return _last_end_reason
 
 
 func score() -> int:
@@ -159,6 +183,8 @@ func begin_drag(cell: Vector2i) -> bool:
 	if route == null:
 		return false
 	_route = route
+	_move_remaining_ms = MOVE_DURATION_MS
+	_last_end_reason = ""
 	_state = State.ROUTE_DRAG
 	return true
 
@@ -167,6 +193,8 @@ func step_drag(next_cell: Vector2i) -> DragRoute.StepResult:
 	if _state != State.ROUTE_DRAG:
 		return DragRoute.StepResult.REJECTED
 	if _remaining_ms <= 0:
+		return DragRoute.StepResult.REJECTED
+	if _move_remaining_ms <= 0:
 		return DragRoute.StepResult.REJECTED
 	if _route == null or not _route.is_active():
 		return DragRoute.StepResult.REJECTED
@@ -180,11 +208,13 @@ func release_drag() -> SessionMoveResult:
 	if _route != null:
 		swaps = _route.swap_count()
 	_route = null
+	_move_remaining_ms = 0
 	if swaps == 0:
 		if _remaining_ms > 0:
 			_state = State.IDLE
 		else:
 			_state = State.SESSION_OVER
+			_expiry_handled = true
 		return SessionMoveResult.no_resolve(_score, _state == State.SESSION_OVER)
 	return _resolve_after_release(_remaining_ms == 0)
 
@@ -198,20 +228,40 @@ func advance_time(elapsed_ms: int) -> void:
 	if elapsed_ms == 0:
 		return
 	if _state != State.IDLE and _state != State.ROUTE_DRAG:
-		# RESOLVING / SESSION_OVER / ERROR / INVALID: timer paused / frozen.
+		# RESOLVING / SESSION_OVER / ERROR / INVALID: both timers paused.
 		return
-	if _remaining_ms <= 0:
+
+	if _state == State.IDLE:
+		if _remaining_ms <= 0:
+			return
+		_remaining_ms = maxi(0, _remaining_ms - elapsed_ms)
+		if _remaining_ms == 0:
+			_handle_session_expiry()
 		return
+
+	# ROUTE_DRAG: deduct the same elapsed from Session + Move.
+	if _remaining_ms <= 0 and _move_remaining_ms <= 0:
+		return
+	var session_before := _remaining_ms
+	var move_before := _move_remaining_ms
 	_remaining_ms = maxi(0, _remaining_ms - elapsed_ms)
-	if _remaining_ms == 0:
-		_handle_expiry()
+	_move_remaining_ms = maxi(0, _move_remaining_ms - elapsed_ms)
+	var session_hit := session_before > 0 and _remaining_ms == 0
+	var move_hit := move_before > 0 and _move_remaining_ms == 0
+	# Simultaneous → Session expiry wins; forced release once.
+	if session_hit:
+		_handle_session_expiry()
+	elif move_hit:
+		_handle_move_expiry()
 
 
-func _handle_expiry() -> void:
-	if _expiry_handled:
+func _handle_session_expiry() -> void:
+	if _expiry_handled and _state != State.ROUTE_DRAG:
 		return
 	_expiry_handled = true
+	_last_end_reason = "session_expiry"
 	if _state == State.IDLE:
+		_move_remaining_ms = 0
 		_state = State.SESSION_OVER
 		return
 	if _state != State.ROUTE_DRAG:
@@ -220,15 +270,35 @@ func _handle_expiry() -> void:
 	if _route != null:
 		swaps = _route.swap_count()
 	_route = null
+	_move_remaining_ms = 0
 	if swaps == 0:
 		_state = State.SESSION_OVER
 		return
-	# Forced release: no rollback; resolve then SESSION_OVER.
 	_resolve_after_release(true)
+
+
+func _handle_move_expiry() -> void:
+	if _state != State.ROUTE_DRAG:
+		return
+	_last_end_reason = "move_expiry"
+	var swaps := 0
+	if _route != null:
+		swaps = _route.swap_count()
+	_route = null
+	_move_remaining_ms = 0
+	if swaps == 0:
+		if _remaining_ms > 0:
+			_state = State.IDLE
+		else:
+			_state = State.SESSION_OVER
+			_expiry_handled = true
+		return
+	_resolve_after_release(_remaining_ms == 0)
 
 
 func _resolve_after_release(force_session_over: bool) -> SessionMoveResult:
 	_state = State.RESOLVING
+	_move_remaining_ms = 0
 	var cascade := CascadeResolver.resolve(_board, _generator, _max_cascade_steps)
 	if not cascade.is_stable():
 		_state = State.ERROR
