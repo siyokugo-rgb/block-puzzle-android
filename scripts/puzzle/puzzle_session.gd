@@ -16,8 +16,8 @@ enum State {
 ## Signed 64-bit maximum (INT64_MAX). Godot `int` is 64-bit.
 const SCORE_MAX := 9223372036854775807
 
-## Per-drag move budget (Phase R-F gameplay lock).
-const MOVE_DURATION_MS := 3000
+## Per-drag move budget (Phase R-F Gate 1 DEV value; not production final).
+const MOVE_DURATION_MS := 1500
 
 var _state: State = State.INVALID
 var _board: PuzzleBoard = null

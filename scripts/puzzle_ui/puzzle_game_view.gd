@@ -2,19 +2,20 @@ class_name PuzzleGameView
 extends Control
 
 ## Phase R-F: minimal Score Attack view. PuzzleSession is the only game-state SoT.
-## Draws board_snapshot(); routes touch/mouse through GridInputMapper → session APIs.
+## Pre-session READY is UI-only (no PuzzleSession.State.READY). Session starts on START/Restart.
 
 const DEV_SEED := 42
 const DEV_WIDTH := 6
 const DEV_HEIGHT := 6
 const DURATIONS_MS: Array[int] = [45000, 60000, 90000]
+const DEFAULT_DURATION_MS := 60000
 
 var _session: PuzzleSession = null
 var _mapper := GridInputMapper.new()
 var _geometry: BoardGeometry = null
 var _elapsed_accumulator_ms: float = 0.0
 var _app_active: bool = true
-var _duration_ms: int = 60000
+var _duration_ms: int = DEFAULT_DURATION_MS
 var _last_move_note: String = ""
 var _skip_timer_frames: int = 2
 ## After startup/focus, drop one abnormal first-frame spike (>1s). Normal play has no cap.
@@ -26,6 +27,9 @@ var _move_timer_label: Label = null
 var _state_label: Label = null
 var _note_label: Label = null
 var _duration_row: HBoxContainer = null
+var _duration_buttons: Dictionary = {} # ms -> Button
+var _start_button: Button = null
+var _restart_button: Button = null
 var _board_area: Control = null
 
 
@@ -33,7 +37,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	focus_mode = Control.FOCUS_ALL
 	_build_hud()
-	_start_session(_duration_ms)
+	_enter_ready()
 	set_process(true)
 	queue_redraw()
 
@@ -48,6 +52,44 @@ func _notification(what: int) -> void:
 		_drop_transition_spike = true
 	elif what == NOTIFICATION_RESIZED:
 		queue_redraw()
+
+
+# --- Testable pre-session / launch helpers (no domain READY state) ---
+
+
+func is_awaiting_start() -> bool:
+	return _session == null
+
+
+func selected_duration_ms() -> int:
+	return _duration_ms
+
+
+func select_duration(ms: int) -> void:
+	if not DURATIONS_MS.has(ms):
+		return
+	_duration_ms = ms
+	_refresh_duration_buttons()
+	_refresh_hud()
+
+
+func start_selected_session() -> void:
+	_start_session(_duration_ms)
+
+
+func restart_selected_session() -> void:
+	_start_session(_duration_ms)
+
+
+func has_playable_session() -> bool:
+	return _session != null and _session.is_valid()
+
+
+func board_input_enabled() -> bool:
+	return has_playable_session() and (
+		_session.state() == PuzzleSession.State.IDLE
+		or _session.state() == PuzzleSession.State.ROUTE_DRAG
+	)
 
 
 func _build_hud() -> void:
@@ -87,19 +129,30 @@ func _build_hud() -> void:
 	_duration_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	_duration_row.add_theme_constant_override("separation", 8)
 	_hud.add_child(_duration_row)
+	_duration_buttons.clear()
 	for ms in DURATIONS_MS:
 		var btn := Button.new()
 		btn.text = "%ds" % int(ms / 1000)
 		btn.pressed.connect(_on_duration_pressed.bind(ms))
 		_duration_row.add_child(btn)
+		_duration_buttons[ms] = btn
 
-	var restart := Button.new()
-	restart.text = "Restart"
-	restart.pressed.connect(_on_restart_pressed)
-	_hud.add_child(restart)
+	_start_button = Button.new()
+	_start_button.text = "START"
+	_start_button.custom_minimum_size = Vector2(0, 48)
+	_start_button.pressed.connect(_on_start_pressed)
+	_hud.add_child(_start_button)
+
+	_restart_button = Button.new()
+	_restart_button.text = "Restart"
+	_restart_button.pressed.connect(_on_restart_pressed)
+	_hud.add_child(_restart_button)
 
 	var seed_label := Label.new()
-	seed_label.text = "DEV seed=%d · 6×6 · 5 OrbTypes" % DEV_SEED
+	seed_label.text = "DEV seed=%d · 6×6 · 5 OrbTypes · Move %.1fs" % [
+		DEV_SEED,
+		float(PuzzleSession.MOVE_DURATION_MS) / 1000.0,
+	]
 	seed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	seed_label.add_theme_font_size_override("font_size", 12)
 	_hud.add_child(seed_label)
@@ -110,27 +163,70 @@ func _build_hud() -> void:
 	_hud.add_child(_board_area)
 
 
+func _enter_ready() -> void:
+	_session = null
+	_mapper.clear()
+	_elapsed_accumulator_ms = 0.0
+	_skip_timer_frames = 2
+	_drop_transition_spike = true
+	_last_move_note = ""
+	_geometry = null
+	_refresh_duration_buttons()
+	_refresh_action_buttons()
+	_refresh_hud()
+	queue_redraw()
+
+
 func _on_duration_pressed(ms: int) -> void:
-	_duration_ms = ms
-	_start_session(ms)
+	# Selection only — never auto-starts a session.
+	select_duration(ms)
+
+
+func _on_start_pressed() -> void:
+	# Button consumes the press; clear mapper so START cannot become a board drag.
+	_mapper.clear()
+	start_selected_session()
 
 
 func _on_restart_pressed() -> void:
-	_start_session(_duration_ms)
+	_mapper.clear()
+	restart_selected_session()
 
 
 func _start_session(duration_ms: int) -> void:
+	_duration_ms = duration_ms
 	_session = PuzzleSession.create_score_attack(DEV_WIDTH, DEV_HEIGHT, DEV_SEED, duration_ms)
 	_mapper.clear()
 	_elapsed_accumulator_ms = 0.0
 	_skip_timer_frames = 2
 	_drop_transition_spike = true
 	_last_move_note = ""
+	_refresh_duration_buttons()
+	_refresh_action_buttons()
 	_refresh_hud()
 	queue_redraw()
 
 
+func _refresh_duration_buttons() -> void:
+	for ms in _duration_buttons.keys():
+		var btn: Button = _duration_buttons[ms]
+		var selected: bool = int(ms) == _duration_ms
+		btn.text = ("%ds ★" if selected else "%ds") % int(int(ms) / 1000)
+		btn.disabled = false
+
+
+func _refresh_action_buttons() -> void:
+	var awaiting := is_awaiting_start()
+	if _start_button != null:
+		_start_button.visible = awaiting
+		_start_button.disabled = not awaiting
+	if _restart_button != null:
+		_restart_button.visible = not awaiting
+		_restart_button.disabled = awaiting
+
+
 func _process(delta: float) -> void:
+	# READY / pre-session: never consume Score Attack time (UMP/ads may still show).
 	if _session == null or not _session.is_valid():
 		return
 	if not _app_active:
@@ -164,7 +260,8 @@ func _process(delta: float) -> void:
 
 
 func _gui_input(event: InputEvent) -> void:
-	if _session == null or not _session.is_valid():
+	# Pre-session READY: board input disabled.
+	if not board_input_enabled():
 		return
 	if event is InputEventScreenTouch:
 		_handle_touch(event as InputEventScreenTouch)
@@ -232,6 +329,8 @@ func _handle_mouse_motion(ev: InputEventMouseMotion) -> void:
 
 
 func _try_begin_at(local_pos: Vector2) -> bool:
+	if not board_input_enabled():
+		return false
 	_update_geometry()
 	if _geometry == null:
 		return false
@@ -274,7 +373,7 @@ func _pointer_move(local_pos: Vector2) -> void:
 
 func _finish_pointer() -> void:
 	_mapper.clear()
-	if _session.state() != PuzzleSession.State.ROUTE_DRAG:
+	if _session == null or _session.state() != PuzzleSession.State.ROUTE_DRAG:
 		_refresh_hud()
 		queue_redraw()
 		return
@@ -295,8 +394,6 @@ func _update_geometry() -> void:
 	if _board_area == null or _session == null:
 		_geometry = null
 		return
-	var area := _board_area.get_rect()
-	# Board area is in this Control's local space via child's position.
 	var top_left := _board_area.position
 	var avail := _board_area.size
 	if avail.x < 8.0 or avail.y < 8.0:
@@ -314,7 +411,7 @@ func _update_geometry() -> void:
 func _on_domain_time_advanced(before_state: PuzzleSession.State) -> void:
 	if before_state != PuzzleSession.State.ROUTE_DRAG:
 		return
-	if _session.state() == PuzzleSession.State.ROUTE_DRAG:
+	if _session == null or _session.state() == PuzzleSession.State.ROUTE_DRAG:
 		return
 	_mapper.clear()
 	var reason := _session.last_end_reason()
@@ -325,6 +422,16 @@ func _on_domain_time_advanced(before_state: PuzzleSession.State) -> void:
 
 
 func _refresh_hud() -> void:
+	if _score_label == null:
+		return
+	if is_awaiting_start():
+		_score_label.text = "Score: ---"
+		_session_timer_label.text = "Session: ---"
+		_move_timer_label.text = "Move: ---"
+		_state_label.text = "State: READY"
+		_note_label.text = "READY — Pick duration and press START"
+		_refresh_action_buttons()
+		return
 	if _session == null:
 		return
 	_score_label.text = "Score: %d" % _session.score()
@@ -342,6 +449,7 @@ func _refresh_hud() -> void:
 	elif _session.state() == PuzzleSession.State.ERROR:
 		note = "ERROR — input blocked"
 	_note_label.text = note
+	_refresh_action_buttons()
 
 
 func _state_name(st: PuzzleSession.State) -> String:
@@ -363,6 +471,9 @@ func _state_name(st: PuzzleSession.State) -> String:
 
 
 func _draw() -> void:
+	if is_awaiting_start():
+		_draw_ready_placeholder()
+		return
 	_update_geometry()
 	if _geometry == null or _session == null:
 		return
@@ -390,6 +501,28 @@ func _draw() -> void:
 				draw_string(font, text_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0.05, 0.05, 0.08))
 			if head == cell and _session.has_active_drag():
 				draw_rect(rect.grow(-3.0), Color(1.0, 1.0, 1.0, 0.85), false, 3.0)
+
+
+func _draw_ready_placeholder() -> void:
+	var top_left := Vector2(16.0, size.y * 0.38)
+	var avail := Vector2(size.x - 32.0, size.y * 0.45)
+	if _board_area != null and _board_area.size.y >= 8.0:
+		top_left = _board_area.position
+		avail = _board_area.size
+	var rect := Rect2(top_left, avail)
+	draw_rect(rect, Color(0.10, 0.12, 0.16), true)
+	draw_rect(rect, Color(0.40, 0.44, 0.52), false, 2.0)
+	var font := ThemeDB.fallback_font
+	var line1 := "READY"
+	var line2 := "Pick duration and press START"
+	var fs1 := 28
+	var fs2 := 16
+	var s1 := font.get_string_size(line1, HORIZONTAL_ALIGNMENT_LEFT, -1, fs1)
+	var s2 := font.get_string_size(line2, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2)
+	var p1 := rect.position + Vector2((rect.size.x - s1.x) * 0.5, rect.size.y * 0.42)
+	var p2 := rect.position + Vector2((rect.size.x - s2.x) * 0.5, rect.size.y * 0.55)
+	draw_string(font, p1, line1, HORIZONTAL_ALIGNMENT_LEFT, -1, fs1, Color(0.92, 0.94, 0.98))
+	draw_string(font, p2, line2, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2, Color(0.75, 0.78, 0.85))
 
 
 func _orb_color(orb_id: int) -> Color:

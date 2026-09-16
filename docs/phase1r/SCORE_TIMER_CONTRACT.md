@@ -168,7 +168,7 @@ UI may display seconds; domain remaining time is always ms.
 
 | Rule | Value |
 | --- | --- |
-| `MOVE_DURATION_MS` | **3000** |
+| `MOVE_DURATION_MS` | **1500** (Gate 1 DEV value; was 3000; not production final) |
 | Active | Only during `ROUTE_DRAG` (set on successful `begin_drag`) |
 | Idle display | Domain reports inactive (`move_remaining_ms() == 0`); UI may show `---` |
 | Tick | Same `elapsed_ms` deducted from Session + Move during `ROUTE_DRAG` |
