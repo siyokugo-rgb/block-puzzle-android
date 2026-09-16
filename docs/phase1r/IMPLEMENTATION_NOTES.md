@@ -1,4 +1,4 @@
-# Phase R-A / R-B / R-C / R-D / R-E0 — Implementation notes
+# Phase R-A / R-B / R-C / R-D / R-E0 / R-E — Implementation notes
 
 ## Roadmap alignment (post Phase 1-R)
 
@@ -9,7 +9,7 @@
 | **R-C** | MatchResolver / orthogonal ≥3 / simultaneous clear set |
 | **R-D** | GravityResolver / refill / CascadeResolver / finite safety guard |
 | **R-E0** | Provisional Score / Timer / Session-state contracts (**docs only**; gate before R-E) |
-| **R-E** | PuzzleSession / timer / mid-drag forced release / provisional Score (**requires R-E0**) |
+| **R-E** | PuzzleSession / timer / mid-drag forced release / provisional Score |
 | **R-F** | Minimal Puzzle UI / Android touch / playable Score Attack / 45·60·90 device comparison |
 | **Gate 1** | After R-F Android playable COMPLETE |
 | Post R-F | Legacy Block Placement deletion decision |
@@ -29,6 +29,8 @@
 | `GravityResolver` | `scripts/puzzle/gravity_resolver.gd` | R-D |
 | `CascadeResult` | `scripts/puzzle/cascade_result.gd` | R-D |
 | `CascadeResolver` | `scripts/puzzle/cascade_resolver.gd` | R-D |
+| `PuzzleSession` | `scripts/puzzle/puzzle_session.gd` | R-E |
+| `SessionMoveResult` | `scripts/puzzle/session_move_result.gd` | R-E |
 
 Legacy `scripts/game/*` unchanged.
 
@@ -293,3 +295,45 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 ### R-E0 code rule
 
 **No** PuzzleSession / Score / Timer GDScript in R-E0. R-E must not start until this contract is COMPLETE.
+
+---
+
+## Phase R-E — PuzzleSession
+
+### Ownership
+
+- `PuzzleSession` privately owns `PuzzleBoard`, `OrbGenerator`, active `DragRoute`, `remaining_ms`, `session_score`, `state`
+- No public mutable board/generator getters
+- Read API: `state`, `score`, `remaining_ms`, `orb_at`, `board_snapshot`, active-drag accessors
+
+### create_score_attack(width, height, seed, duration_ms)
+
+- Empty board + **one** `OrbGenerator` → `fill_match_stable` → same instance kept for cascade refill
+- Opening board must be match-stable; else `INVALID`
+- Success → `IDLE`, score 0, `remaining_ms = duration_ms`
+- Optional `max_cascade_steps` seam defaults to 128 (safety only)
+
+### States
+
+`INVALID` / `IDLE` / `ROUTE_DRAG` / `RESOLVING` / `SESSION_OVER` / `ERROR`
+
+### Drag
+
+- `begin_drag` only in `IDLE` with `remaining_ms > 0`
+- `step_drag` delegates to `DragRoute.try_step`; rejected outside `ROUTE_DRAG` or after timer 0
+- `release_drag`: 0 swaps → no cascade; ≥1 swap → resolve
+
+### Score
+
+- `PuzzleSession.compute_move_score` / `checked_mul` / `checked_add` — single formula (R-E0)
+- Commit once after full move_score is computed; overflow → `ERROR`, prior score kept
+
+### Timer
+
+- `advance_time(elapsed_ms)` per R-E0; ticks only `IDLE`/`ROUTE_DRAG`
+- Mid-drag expiry forced release; RESOLVING is sync domain pause (no tick during resolve)
+
+### Out of R-E scope
+
+- UI / Scene / Touch / Animation
+- 45/60/90 final pick / ROCK / Save / Ads / legacy delete
