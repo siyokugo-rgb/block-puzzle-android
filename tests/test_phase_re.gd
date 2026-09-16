@@ -257,6 +257,42 @@ func test_checked_arithmetic_and_overflow_paths() -> void:
 	assert_false(PuzzleSession.checked_add(-1, 2)["ok"])
 
 
+func test_session_score_plus_move_score_overflow_integration() -> void:
+	## Direct session commit path: prior score near SCORE_MAX, stable cascade move ≥300.
+	## ERROR cause is score commit overflow — not cascade failure (default max steps).
+	var s := _session(6, 6, 42, 60000)
+	assert_eq(s.state(), PuzzleSession.State.IDLE)
+	var prior := PuzzleSession.SCORE_MAX - 100
+	s._score = prior
+	assert_eq(s.score(), prior)
+	var remaining_before := s.remaining_ms()
+
+	var pair: Array = _find_matching_swap(s)
+	assert_eq(pair.size(), 2)
+	var a: Vector2i = pair[0]
+	var b: Vector2i = pair[1]
+	assert_true(s.begin_drag(a))
+	assert_eq(s.step_drag(b), DragRoute.StepResult.SWAPPED)
+	var result := s.release_drag()
+
+	# Cascade completed enough to produce a move_score ≥ 300 (single step min clear is 3).
+	assert_true(result.is_error())
+	assert_false(result.is_success())
+	assert_eq(s.state(), PuzzleSession.State.ERROR)
+	assert_eq(s.score(), prior)
+	assert_ne(s.score(), PuzzleSession.SCORE_MAX)
+	assert_true(s.score() >= 0)
+	assert_eq(s.remaining_ms(), remaining_before)
+	assert_true(s.remaining_ms() >= 0)
+
+	# Input blocked after ERROR.
+	assert_false(s.begin_drag(Vector2i(0, 0)))
+	assert_eq(s.step_drag(Vector2i(1, 0)), DragRoute.StepResult.REJECTED)
+	var ignored := s.release_drag()
+	assert_false(ignored.is_success())
+	assert_false(ignored.is_error()) # ignored() — not a successful move
+
+
 # --- I. Timer IDLE ---
 
 
