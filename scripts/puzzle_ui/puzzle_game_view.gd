@@ -130,19 +130,17 @@ func _process(delta: float) -> void:
 	if st != PuzzleSession.State.IDLE and st != PuzzleSession.State.ROUTE_DRAG:
 		_refresh_hud()
 		return
-	# Skip startup / focus hitch frames so a huge first delta cannot expire the timer.
+	# Skip startup / focus transition frames (abnormal first delta); do not count them.
 	if _skip_timer_frames > 0:
 		_skip_timer_frames -= 1
 		_elapsed_accumulator_ms = 0.0
 		_refresh_hud()
 		return
+	# Active foreground: preserve all elapsed whole milliseconds (no per-frame cap).
 	_elapsed_accumulator_ms += delta * 1000.0
 	var whole_ms := int(floor(_elapsed_accumulator_ms))
 	if whole_ms > 0:
 		_elapsed_accumulator_ms -= float(whole_ms)
-		# Cap applied advance; discard hitch excess (do not bank multi-second spikes).
-		if whole_ms > 100:
-			whole_ms = 100
 		_session.advance_time(whole_ms)
 		_refresh_hud()
 		queue_redraw()
