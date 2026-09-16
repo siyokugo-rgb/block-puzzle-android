@@ -2,10 +2,12 @@
 
 Phase 0 production baseline for Godot 4.7.2 Android + GUT + AdMob/UMP.
 
-Phase 1-A adds a UI-free block-placement **game core** (Board / Piece / place / line clear).
-Phase 1-B adds **piece supply** (catalog / seeded generator / 3-slot tray / placement search).
-Phase 1-C adds **GameSession** (move transaction / 3-clear refill / Game Over).
-Score, Adaptive Difficulty, production catalogs, and UI/input are **not** implemented yet.
+Phase 1-A…1-C added a UI-free **Block Placement** domain (`BoardState` / tray / `GameSession`).  
+Phase 1-D (PR #8) attempted a playable placement slice — **SUPERSEDED** by product redesign (closed unmerged).
+
+**Phase 1-R** freezes the new **Route-Drag Match Puzzle** contracts (docs only): see [`docs/phase1r/README.md`](docs/phase1r/README.md).
+
+Legacy Block Placement types remain on `main` until post–R-D cleanup. Phase 0 Ads/UMP/Android/GUT must not be broken.
 
 ## Status
 
@@ -17,9 +19,11 @@ Score, Adaptive Difficulty, production catalogs, and UI/input are **not** implem
 | 0-D AdMob test banner | COMPLETE |
 | 0-E UMP consent gate | COMPLETE — Android reference-device scenarios A–E PASS |
 | 0-F Production baseline closeout | COMPLETE |
-| 1-A Block placement game core | COMPLETE |
-| 1-B Piece supply / tray / placement search | COMPLETE |
-| 1-C Game session / tray lifecycle / Game Over | COMPLETE |
+| 1-A Block placement game core | COMPLETE (legacy; SUPERSEDED direction) |
+| 1-B Piece supply / tray / placement search | COMPLETE (legacy; SUPERSEDED direction) |
+| 1-C Game session / tray lifecycle / Game Over | COMPLETE (legacy; SUPERSEDED direction) |
+| 1-D Minimal playable placement slice | SUPERSEDED / REDESIGN — PR #8 closed unmerged |
+| 1-R Route-drag match redesign (docs) | in review (Draft PR) |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
@@ -76,6 +80,26 @@ Contract:
 - Game Over = remaining tray pieces exist and **none** are placeable (`PlacementSearch.has_any_placeable_piece`); empty tray is not Game Over (refill runs first)
 - Session states: `INVALID` / `ACTIVE` / `GAME_OVER`
 - No Score / UI / final board size / production catalog in this phase
+
+## Phase 1-R route-drag match redesign
+
+Normative contracts (docs only in Phase 1-R):
+
+| Doc | Path |
+| --- | --- |
+| Phase 1-R specification | [`docs/phase1r/README.md`](docs/phase1r/README.md) |
+
+Summary of locked direction:
+
+- DEV board **6×6**, DEV **5** orb types (not production finals)
+- Route drag with **4-direction** adjacent swaps; resolve on **release**
+- Orthogonal matches **≥3**; no diagonals; simultaneous clear; column gravity; top refill; cascade to stability
+- Seedable RNG; input locked + timer paused during resolve
+- First mode: **Score Attack** (DEV default **60s**, compare 45/60/90 later)
+- First obstacle later: **ROCK**; LOCK / SLIME / Rescue Gauge deferred
+- Legacy Block Placement domain kept until R-D playable COMPLETE
+
+**Do not start R-A until Phase 1-R docs PR is accepted.**
 
 ## Versions
 
