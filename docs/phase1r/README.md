@@ -37,7 +37,7 @@ Implementation phases (R-A onward) are **out of scope** here.
 | Branch `cursor/phase1d-playable-slice-b8da` @ `8c67caa…` | Kept as evidence |
 | Prerelease `phase1d-test-8c67caa` | Kept as evidence |
 
-### 2.2 Legacy domain (SUPERSEDED — keep until R-D playable COMPLETE)
+### 2.2 Legacy domain (SUPERSEDED — keep until R-F playable COMPLETE)
 
 | Legacy type | Path (today) |
 | --- | --- |
@@ -51,7 +51,7 @@ Implementation phases (R-A onward) are **out of scope** here.
 | `MoveResult` | `scripts/game/move_result.gd` |
 | Phase 1-D UI | `scripts/game_ui/*`, `scenes/game/game.tscn` (on PR #8 branch only; **not on main**) |
 
-**Phase 1-R rule:** do **not** delete these types. New puzzle domain is implemented **in parallel**. Legacy deletion is decided only after **R-D playable loop = COMPLETE**.
+**Phase 1-R rule:** do **not** delete these types. New puzzle domain is implemented **in parallel**. Legacy deletion is decided only after **R-F Android playable Score Attack = COMPLETE**.
 
 ### 2.3 Untouchable baseline (Phase 0)
 
@@ -117,8 +117,8 @@ These are **locked for Phase 1-R contracts**. Values marked DEV are defaults for
 | Timer mid-drag expiry | Force-release path — **no route rollback** (see §12) |
 | First playable mode | **Score Attack** |
 | DEV timer default | **60s** — compare **45 / 60 / 90** on device later; **not** a final fixed value |
-| Score formula | Unresolved in 1-R; **provisional formula mandatory before R-D Score Attack implementation** |
-| First obstacle | **ROCK** as `ObstacleType` (not an `OrbType`) |
+| Score formula | Unresolved in 1-R; **provisional formula mandatory before R-E implementation starts** |
+| First obstacle | **ROCK** as `ObstacleType` (not an `OrbType`) — only after **Gate 1** |
 | LOCK | Deferred |
 | SLIME | Deferred further |
 | Rescue Gauge | Deferred |
@@ -276,7 +276,7 @@ Refill during cascade is **not** required to be match-stable cell-by-cell (casca
 
 ### 10.4 Refill
 
-- For each empty cell after gravity, assign a new orb from `OrbGenerator` in a **deterministic order** (recommended: left→right `x`, within column top→bottom `y`). Fix exact loop in R-A tests and keep it stable.
+- For each empty cell after gravity, assign a new orb from `OrbGenerator` in a **deterministic order** (recommended: left→right `x`, within column top→bottom `y`). Fix exact loop in **R-D** tests and keep it stable.
 
 ### 10.5 Cascade + safety guard
 
@@ -367,17 +367,20 @@ Score formulas remain unresolved in 1-R (§15); timer end still ends the session
 
 ---
 
-## 14. Legacy migration plan
+## 14. Legacy migration plan (current roadmap)
 
 | Step | Phase | Action |
 | --- | --- | --- |
-| 0 | 1-R (this) | Docs + contracts; PR #8 superseded |
-| 1 | R-A | Implement puzzle domain (+ GUT) **alongside** legacy `scripts/game/*` |
-| 2 | R-B | Headless session loop: drag → resolve → cascade → timer (incl. mid-drag expiry) |
-| 3 | R-C | Minimal UI render + route drag input (PuzzleView); main hosts child without breaking Ads/UMP |
-| 4 | R-D | Playable Score Attack on device; **provisional Score formula fixed before implementation starts**; COMPLETE gate |
-| 5 | Post R-D | Decide legacy deletion (`BoardState`…`GameSession`, 1-D UI) in a dedicated cleanup PR |
-| 6 | Later | ROCK → LOCK → SLIME → Rescue Gauge → Stage Mode |
+| 0 | 1-R | Docs + contracts; PR #8 superseded |
+| 1 | **R-A** | `OrbType` / `PuzzleCell` / `PuzzleBoard` / `OrbGenerator` / match-stable initial fill |
+| 2 | **R-B** | `DragRoute` / 4-direction swap semantics only — **no** match resolve |
+| 3 | **R-C** | `MatchResolver` / orthogonal ≥3 detection / simultaneous clear set |
+| 4 | **R-D** | `GravityResolver` / refill / `CascadeResolver` / finite safety guard |
+| 5 | **R-E** | `PuzzleSession` / timer / mid-drag forced release / provisional Score — **Score formula locked before R-E starts** |
+| 6 | **R-F** | Minimal Puzzle UI / Android touch / playable Score Attack / 45·60·90 device comparison |
+| 7 | **Gate 1** | After **R-F Android playable COMPLETE** |
+| 8 | Post R-F | Decide legacy Block Placement deletion in a dedicated cleanup PR |
+| 9 | Post Gate 1 | ROCK → later LOCK / SLIME / Rescue Gauge → Stage Mode |
 
 **Parallel rule:** new tests must not delete or rewrite Phase 1-A/B/C tests until legacy removal PR. Legacy tests may remain green on unused code.
 
@@ -387,15 +390,15 @@ Score formulas remain unresolved in 1-R (§15); timer end still ends the session
 
 - Final board size (production)
 - Final orb type count / art / colorblind palette
-- **Score / combo formula** — may stay open through 1-R; **must lock a provisional formula before R-D Score Attack implementation begins**
-- **45 / 60 / 90** second duration choice — open until **on-device comparison**
-- ROCK damage numbers / break animation
+- **Score / combo formula** — may stay open through 1-R; **must lock a provisional formula before R-E implementation starts**
+- **45 / 60 / 90** second duration choice — open until **on-device comparison** (R-F)
+- ROCK damage numbers / break animation (post Gate 1)
 - LOCK / SLIME semantics
 - Rescue Gauge thresholds
 - Stage Mode structure
 - Production AdMob unit IDs
 - Animation / juice / SFX / BGM / haptics
-- Exact refill nested-loop order (must be fixed in R-A with tests)
+- Exact refill nested-loop order (must be fixed in R-D with tests)
 - Session time unit (whole seconds vs ms)
 - Exact `MAX_CASCADE_STEPS` numeric value (example 128; finite guard mandatory)
 
@@ -416,23 +419,24 @@ Score formulas remain unresolved in 1-R (§15); timer end still ends the session
 - Input ignored while RESOLVING
 - Session over after expiry at IDLE
 
-### Android (R-D)
+### Android (R-F)
 
 - Route drag feel; release resolve; cascade readable
 - Timer pause visibly during resolve; mid-drag expiry behavior
+- 45 / 60 / 90 device comparison
 - Portrait; no crash; Phase 0 consent/privacy regression
 
 ### Gate artifacts
 
 - GUT all green including new puzzle tests
 - Debug APK when UI exists
-- Device checklist signed off for R-D COMPLETE
+- Device checklist signed off for **R-F COMPLETE** → Gate 1
 
 ---
 
 ## 17. Gate 1 kill criteria
 
-Stop or redesign **before** investing in Stage Mode / obstacles / economy if any of the following hold after first playable (R-D):
+Stop or redesign **before** investing in Stage Mode / obstacles / economy if any of the following hold after first playable (**R-F** / Gate 1):
 
 1. Route-drag swap is not understandable within ~10 seconds for new players in informal tests.
 2. Cascades frequently feel unfair or unreadable (player cannot tell why clears happened).
@@ -459,7 +463,7 @@ If Gate 1 fails → **REDESIGN** or **KILL** direction; do not paper over with m
 | Orb / Obstacle separation fixed | YES (§13) |
 | ROCK future attachment points fixed | YES (§13.1) |
 | Legacy migration order fixed | YES (§14) |
-| Score deadline before R-D noted | YES (§15) |
+| Score deadline before R-E noted | YES (§15) |
 | No Critical/High spec contradictions in locked decisions | YES |
 | Implementation of new puzzle **not** started | YES |
 | R-A **not** auto-started | YES |
