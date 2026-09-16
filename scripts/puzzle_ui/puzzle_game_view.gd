@@ -17,6 +17,8 @@ var _app_active: bool = true
 var _duration_ms: int = 60000
 var _last_move_note: String = ""
 var _skip_timer_frames: int = 2
+## After startup/focus, drop one abnormal first-frame spike (>1s). Normal play has no cap.
+var _drop_transition_spike: bool = true
 var _hud: VBoxContainer = null
 var _score_label: Label = null
 var _timer_label: Label = null
@@ -42,6 +44,7 @@ func _notification(what: int) -> void:
 		_app_active = true
 		_elapsed_accumulator_ms = 0.0
 		_skip_timer_frames = 2
+		_drop_transition_spike = true
 	elif what == NOTIFICATION_RESIZED:
 		queue_redraw()
 
@@ -116,6 +119,7 @@ func _start_session(duration_ms: int) -> void:
 	_mapper.clear()
 	_elapsed_accumulator_ms = 0.0
 	_skip_timer_frames = 2
+	_drop_transition_spike = true
 	_last_move_note = ""
 	_refresh_hud()
 	queue_redraw()
@@ -136,11 +140,17 @@ func _process(delta: float) -> void:
 		_elapsed_accumulator_ms = 0.0
 		_refresh_hud()
 		return
-	# Active foreground: preserve all elapsed whole milliseconds (no per-frame cap).
+	# Active foreground: preserve all elapsed whole milliseconds (no per-frame gameplay cap).
 	_elapsed_accumulator_ms += delta * 1000.0
 	var whole_ms := int(floor(_elapsed_accumulator_ms))
 	if whole_ms > 0:
 		_elapsed_accumulator_ms -= float(whole_ms)
+		# One-shot transition spike filter only (startup/focus). Not a gameplay cap.
+		if _drop_transition_spike and whole_ms > 1000:
+			_drop_transition_spike = false
+			_refresh_hud()
+			return
+		_drop_transition_spike = false
 		_session.advance_time(whole_ms)
 		_refresh_hud()
 		queue_redraw()

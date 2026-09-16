@@ -360,9 +360,9 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 ### Timer adapter
 
 - Accumulate `delta*1000` fractional remainder; pass every whole millisecond via `advance_time(whole_ms)` while foreground-active
-- **No per-frame cap** — active gameplay elapsed is never discarded
+- **No per-frame gameplay cap** — active gameplay elapsed is never discarded
 - Pause when app/window unfocused (no catch-up on resume)
-- Startup / focus-return: skip a few frames and reset remainder (transition hitch only)
+- Startup / focus-return: skip a few frames, reset remainder, and drop at most one abnormal transition spike (>1s)
 - Domain `RESOLVING` still pauses the session timer
 
 ### DEV play
