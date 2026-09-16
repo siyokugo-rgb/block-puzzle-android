@@ -23,7 +23,7 @@ Legacy Block Placement types remain on `main` until post–R-D cleanup. Phase 0 
 | 1-B Piece supply / tray / placement search | COMPLETE (legacy; SUPERSEDED direction) |
 | 1-C Game session / tray lifecycle / Game Over | COMPLETE (legacy; SUPERSEDED direction) |
 | 1-D Minimal playable placement slice | SUPERSEDED / REDESIGN — PR #8 closed unmerged |
-| 1-R Route-drag match redesign (docs) | in review (Draft PR) |
+| 1-R Route-drag match redesign (docs) | COMPLETE |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
@@ -92,11 +92,14 @@ Normative contracts (docs only in Phase 1-R):
 Summary of locked direction:
 
 - DEV board **6×6**, DEV **5** orb types (not production finals)
-- Route drag with **4-direction** adjacent swaps; resolve on **release**
-- Orthogonal matches **≥3**; no diagonals; simultaneous clear; column gravity; top refill; cascade to stability
-- Seedable RNG; input locked + timer paused during resolve
-- First mode: **Score Attack** (DEV default **60s**, compare 45/60/90 later)
-- First obstacle later: **ROCK**; LOCK / SLIME / Rescue Gauge deferred
+- **Match-stable** initial board (no opening cascade / score); seedable
+- Route drag, **4-dir**, **revisit allowed**; swap on **new cell enter** only; resolve on **release**
+- Orthogonal ≥3 match; no diagonal; simultaneous clear; column gravity; top refill; cascade with **finite safety guard**
+- Seedable RNG; no input + timer pause during resolve
+- Mid-drag timer=0 → stop steps; ≥1 swap forced release→resolve→SESSION_OVER; 0 swaps→SESSION_OVER (**no rollback**)
+- First mode: **Score Attack** (DEV default **60s**; 45/60/90 until device compare)
+- Provisional **Score formula required before R-D Score Attack implementation**
+- `OrbType` = orbs only; obstacles (`ROCK`/`LOCK`/`SLIME`) separate on `PuzzleCell`
 - Legacy Block Placement domain kept until R-D playable COMPLETE
 
 **Do not start R-A until Phase 1-R docs PR is accepted.**
