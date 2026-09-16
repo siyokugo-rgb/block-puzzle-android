@@ -1,4 +1,4 @@
-# Phase R-A / R-B — Implementation notes
+# Phase R-A / R-B / R-C — Implementation notes
 
 ## Roadmap alignment (post Phase 1-R)
 
@@ -23,6 +23,8 @@
 | `PuzzleBoard` | `scripts/puzzle/puzzle_board.gd` | R-A |
 | `OrbGenerator` | `scripts/puzzle/orb_generator.gd` | R-A |
 | `DragRoute` | `scripts/puzzle/drag_route.gd` | R-B |
+| `MatchResult` | `scripts/puzzle/match_result.gd` | R-C |
+| `MatchResolver` | `scripts/puzzle/match_resolver.gd` | R-C |
 
 Legacy `scripts/game/*` unchanged.
 
@@ -126,3 +128,44 @@ DEV verification target: **6×6 / 5 OrbType** → no horizontal/vertical ≥3 af
 - `release` / `finish` / `cancel` / rollback
 - MatchResolver / clear / gravity / refill / cascade
 - PuzzleSession / timer / score / UI / touch
+
+---
+
+## Phase R-C — MatchResolver
+
+### Ownership
+
+- `MatchResolver` owns match geometry (SoT)
+- `PuzzleBoard` does **not** detect matches
+- Threshold: orthogonal contiguous same `OrbType` length **≥ 3**
+- **No diagonal** matching
+- Empty cells break runs (future obstacles without orbs also break naturally)
+
+### detect(board) → MatchResult
+
+- Read-only: never mutates the board
+- null / invalid board → `MatchResult.invalid()` (`is_valid() == false`)
+- Scans all rows then all columns; unions cells; dedupes intersections
+- Long runs include **all** cells (e.g. 5-in-a-row → 5 cells, not 3)
+- Line-end runs are flushed (no end-of-line leak)
+
+### MatchResult
+
+- `is_valid()` / `has_matches()` / `matched_cell_count()` / `matched_cells_snapshot()`
+- Snapshot is defensive; order is **row-major** (`y` asc, then `x` asc)
+- No score / combo fields
+
+### clear_current_matches(board) → MatchResult
+
+- Re-detects on the **current** board (no stale MatchResult input API)
+- Clears the simultaneous union in one pass after detection completes
+- Non-matched cells preserved
+- No matches → board unchanged, valid empty result
+- Invalid board → invalid result, no mutation
+- Does **not** gravity / refill / cascade
+
+### Out of R-C scope
+
+- GravityResolver / refill / CascadeResolver
+- PuzzleSession / timer / score / combo / specials
+- Obstacles / UI / touch

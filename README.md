@@ -26,6 +26,7 @@ Legacy Block Placement types remain on `main` until post–**R-F** cleanup. Phas
 | 1-R Route-drag match redesign (docs) | COMPLETE |
 | R-A PuzzleBoard / Orb / stable initial fill | COMPLETE |
 | R-B DragRoute / 4-dir route swap | COMPLETE |
+| R-C MatchResolver / orthogonal clear | COMPLETE |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
@@ -136,6 +137,19 @@ Roadmap (post–1-R): **R-A** board/fill → **R-B** DragRoute → **R-C** Match
 - `StepResult`: `SWAPPED` / `NO_CHANGE_SAME_CELL` / `REJECTED`
 - No match resolve / release / session / timer in R-B
 
+## Phase R-C MatchResolver
+
+| Type | Path |
+| --- | --- |
+| `MatchResult` | `scripts/puzzle/match_result.gd` |
+| `MatchResolver` | `scripts/puzzle/match_resolver.gd` |
+| Notes | [`docs/phase1r/IMPLEMENTATION_NOTES.md`](docs/phase1r/IMPLEMENTATION_NOTES.md) (R-C section) |
+
+- Orthogonal ≥3 only; no diagonal; simultaneous union; intersection unique
+- `detect` read-only; `clear_current_matches` re-detects then clears union
+- Result cells row-major; defensive snapshot; no score/combo
+- Gravity / refill / cascade: **not** in R-C
+
 ## Versions
 
 - Godot **4.7.2** stable (Standard / GDScript)
@@ -200,7 +214,7 @@ API audit: `tooling/admob/UMP_API_AUDIT.md`
 ./tooling/gut/run_tests.sh
 ```
 
-Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`, `tests/test_phase1a.gd`, `tests/test_phase1b.gd`, `tests/test_phase1c.gd`, `tests/test_phase_ra.gd`, `tests/test_phase_rb.gd`.
+Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`, `tests/test_phase1a.gd`, `tests/test_phase1b.gd`, `tests/test_phase1c.gd`, `tests/test_phase_ra.gd`, `tests/test_phase_rb.gd`, `tests/test_phase_rc.gd`.
 
 ## Debug APK / AAB
 
