@@ -1,4 +1,4 @@
-# Phase R-A / R-B / R-C / R-D — Implementation notes
+# Phase R-A / R-B / R-C / R-D / R-E0 — Implementation notes
 
 ## Roadmap alignment (post Phase 1-R)
 
@@ -8,7 +8,8 @@
 | **R-B** | DragRoute / 4-direction swap semantics only (no match resolve) |
 | **R-C** | MatchResolver / orthogonal ≥3 / simultaneous clear set |
 | **R-D** | GravityResolver / refill / CascadeResolver / finite safety guard |
-| **R-E** | PuzzleSession / timer / mid-drag forced release / provisional Score (**Score formula locked before R-E starts**) |
+| **R-E0** | Provisional Score / Timer / Session-state contracts (**docs only**; gate before R-E) |
+| **R-E** | PuzzleSession / timer / mid-drag forced release / provisional Score (**requires R-E0**) |
 | **R-F** | Minimal Puzzle UI / Android touch / playable Score Attack / 45·60·90 device comparison |
 | **Gate 1** | After R-F Android playable COMPLETE |
 | Post R-F | Legacy Block Placement deletion decision |
@@ -256,3 +257,37 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 - Drag release integration / UI / touch / Scene
 - ROCK / LOCK / SLIME / Rescue / Animation
 - Ads / Android export changes
+
+---
+
+## Phase R-E0 — Provisional Score / Timer Contract (docs only)
+
+**Canonical spec:** [`SCORE_TIMER_CONTRACT.md`](SCORE_TIMER_CONTRACT.md)
+
+### Score (provisional, Gate 1)
+
+- Input: `CascadeResult.cleared_cell_count_per_step_snapshot()` only
+- `step_index` is 1-based
+- `base_score = cleared_cells * 100`
+- `cascade_bonus = cleared_cells * 25 * (step_index - 1)`
+- `move_score = sum(step_score)`
+- Integer only; never negative; invalid / guard-exceeded cascades award **0**
+- Do not call this “Combo”; use cascade step / depth
+- Excluded: group count, route length, speed, color, specials, ROCK, Rescue, time bonus, stage, difficulty
+
+### Timer
+
+- Domain SoT unit: **integer milliseconds** (not float seconds)
+- DEV default: **60000** ms; comparison set: **45000 / 60000 / 90000** ms
+- `advance_time(elapsed_ms)`: `>0` applies; `0` no-op; `<0` reject/no-op
+- Ticks in `IDLE` / `ROUTE_DRAG` only; paused in `RESOLVING` / `SESSION_OVER` / `ERROR` / `INVALID`
+- Overshoot clamps to 0; expiry handled once
+- Mid-drag expiry: forced release if swaps≥1 (no rollback); score on stable cascade; then `SESSION_OVER`
+
+### Session states (R-E target)
+
+`INVALID` / `IDLE` / `ROUTE_DRAG` / `RESOLVING` / `SESSION_OVER` / `ERROR`
+
+### R-E0 code rule
+
+**No** PuzzleSession / Score / Timer GDScript in R-E0. R-E must not start until this contract is COMPLETE.

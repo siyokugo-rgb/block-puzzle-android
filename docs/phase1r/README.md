@@ -116,8 +116,8 @@ These are **locked for Phase 1-R contracts**. Values marked DEV are defaults for
 | Timer during resolve | **Paused** for resolver / cascade |
 | Timer mid-drag expiry | Force-release path — **no route rollback** (see §12) |
 | First playable mode | **Score Attack** |
-| DEV timer default | **60s** — compare **45 / 60 / 90** on device later; **not** a final fixed value |
-| Score formula | Unresolved in 1-R; **provisional formula mandatory before R-E implementation starts** |
+| DEV timer default | **60000 ms** — compare **45000 / 60000 / 90000** on device later; shipped pick still open until R-F |
+| Score formula | **Provisional locked in R-E0** — see [`SCORE_TIMER_CONTRACT.md`](SCORE_TIMER_CONTRACT.md); required before R-E |
 | First obstacle | **ROCK** as `ObstacleType` (not an `OrbType`) — only after **Gate 1** |
 | LOCK | Deferred |
 | SLIME | Deferred further |
@@ -321,12 +321,14 @@ repeat:
 | Rule | Detail |
 | --- | --- |
 | Mode | Score Attack first |
-| DEV default duration | 60 seconds (**not** final) |
-| Comparison set | 45 / 60 / 90 — **remain open until on-device comparison** |
+| Domain unit | **integer milliseconds** (SoT; not float seconds) — locked in R-E0 |
+| DEV default duration | **60000** ms (**not** final shipped pick) |
+| Comparison set | **45000 / 60000 / 90000** ms — on-device comparison in R-F |
 | Ticking | Only while phase is `IDLE` or `ROUTE_DRAG` |
-| Paused | Entire `RESOLVING` (match/clear/gravity/refill/cascade) |
+| Paused | Entire `RESOLVING` (match/clear/gravity/refill/cascade); also `SESSION_OVER` / `ERROR` / `INVALID` |
+| Overshoot | Clamp remaining to **0** (never negative); expiry once |
 | Expiry mid-resolve | Finish cascade (or fail-closed); then `SESSION_OVER` |
-| UI | May display remaining time; domain owns remaining seconds / ms |
+| UI | May display remaining time; domain owns remaining **ms** |
 
 ### 12.1 Timer expiry during `ROUTE_DRAG` (locked)
 
@@ -334,12 +336,12 @@ When the timer reaches **0** while phase is `ROUTE_DRAG`:
 
 1. **Stop accepting new route steps** immediately (held finger cannot add further moves).
 2. If **≥1 swap** has already occurred on this route:  
-   **forced release** of the current route (board stays as swapped — **no rollback**) → enter `RESOLVING` → run cascade to completion → then `SESSION_OVER`.
+   **forced release** of the current route (board stays as swapped — **no rollback**) → enter `RESOLVING` → run cascade to completion → if cascade is **stable success**, award provisional Score → then `SESSION_OVER`.
 3. If **0 swaps**: go directly to `SESSION_OVER` (no resolve).
 
 Former “cancel / revert-or-keep unresolved” language is **abolished**.
 
-Score formulas remain unresolved in 1-R (§15); timer end still ends the session even if score is stubbed.
+Provisional Score formula is locked in R-E0 ([`SCORE_TIMER_CONTRACT.md`](SCORE_TIMER_CONTRACT.md)). Forced final moves use the same formula when cascade succeeds.
 
 ---
 
@@ -376,7 +378,8 @@ Score formulas remain unresolved in 1-R (§15); timer end still ends the session
 | 2 | **R-B** | `DragRoute` / 4-direction swap semantics only — **no** match resolve |
 | 3 | **R-C** | `MatchResolver` / orthogonal ≥3 detection / simultaneous clear set |
 | 4 | **R-D** | `GravityResolver` / refill / `CascadeResolver` / finite safety guard |
-| 5 | **R-E** | `PuzzleSession` / timer / mid-drag forced release / provisional Score — **Score formula locked before R-E starts** |
+| 4.5 | **R-E0** | Provisional Score / Timer / Session-state contracts (**docs only**) — **gate before R-E** |
+| 5 | **R-E** | `PuzzleSession` / timer / mid-drag forced release / provisional Score — **requires R-E0 COMPLETE** |
 | 6 | **R-F** | Minimal Puzzle UI / Android touch / playable Score Attack / 45·60·90 device comparison |
 | 7 | **Gate 1** | After **R-F Android playable COMPLETE** |
 | 8 | Post R-F | Decide legacy Block Placement deletion in a dedicated cleanup PR |
@@ -390,17 +393,25 @@ Score formulas remain unresolved in 1-R (§15); timer end still ends the session
 
 - Final board size (production)
 - Final orb type count / art / colorblind palette
-- **Score / combo formula** — may stay open through 1-R; **must lock a provisional formula before R-E implementation starts**
-- **45 / 60 / 90** second duration choice — open until **on-device comparison** (R-F)
+- **Which** of 45000 / 60000 / 90000 ms becomes the shipped Score Attack default — open until **R-F on-device comparison** (unit and set are locked in R-E0)
 - ROCK damage numbers / break animation (post Gate 1)
 - LOCK / SLIME semantics
 - Rescue Gauge thresholds
 - Stage Mode structure
 - Production AdMob unit IDs
 - Animation / juice / SFX / BGM / haptics
-- Exact refill nested-loop order (must be fixed in R-D with tests)
-- Session time unit (whole seconds vs ms)
-- Exact `MAX_CASCADE_STEPS` numeric value (example 128; finite guard mandatory)
+- Post–Gate 1 Score revisions (group counts, time bonus, obstacles, etc.)
+
+### Resolved after 1-R (see linked contracts)
+
+| Topic | Locked in |
+| --- | --- |
+| Refill nested-loop order | R-D (`IMPLEMENTATION_NOTES`) |
+| `MAX_CASCADE_STEPS = 128` | R-D |
+| Provisional Score formula | **R-E0** [`SCORE_TIMER_CONTRACT.md`](SCORE_TIMER_CONTRACT.md) |
+| Session time unit = ms | **R-E0** |
+| DEV timer values 45/60/90 as ms set | **R-E0** |
+| Session state names / transitions | **R-E0** |
 
 ---
 
@@ -463,7 +474,7 @@ If Gate 1 fails → **REDESIGN** or **KILL** direction; do not paper over with m
 | Orb / Obstacle separation fixed | YES (§13) |
 | ROCK future attachment points fixed | YES (§13.1) |
 | Legacy migration order fixed | YES (§14) |
-| Score deadline before R-E noted | YES (§15) |
+| Score deadline before R-E noted | YES (§15; **satisfied by R-E0** [`SCORE_TIMER_CONTRACT.md`](SCORE_TIMER_CONTRACT.md)) |
 | No Critical/High spec contradictions in locked decisions | YES |
 | Implementation of new puzzle **not** started | YES |
 | R-A **not** auto-started | YES |
@@ -475,6 +486,6 @@ If Gate 1 fails → **REDESIGN** or **KILL** direction; do not paper over with m
 | Doc | Role |
 | --- | --- |
 | This file (`docs/phase1r/README.md`) | Normative Phase 1-R contracts |
+| [`SCORE_TIMER_CONTRACT.md`](SCORE_TIMER_CONTRACT.md) | **R-E0** provisional Score / Timer / Session states (required before R-E) |
+| [`IMPLEMENTATION_NOTES.md`](IMPLEMENTATION_NOTES.md) | R-A…R-D implementation notes + R-E0 summary |
 | Root `README.md` | Status pointer + Phase 0 / legacy note |
-
-R-A should add `docs/phase1r/IMPLEMENTATION_NOTES.md` only when code lands.

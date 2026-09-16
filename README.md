@@ -27,7 +27,8 @@ Legacy Block Placement types remain on `main` until post–**R-F** cleanup. Phas
 | R-A PuzzleBoard / Orb / stable initial fill | COMPLETE |
 | R-B DragRoute / 4-dir route swap | COMPLETE |
 | R-C MatchResolver / orthogonal clear | COMPLETE |
-| R-D Gravity / refill / cascade | COMPLETE (this branch; Draft PR) |
+| R-D Gravity / refill / cascade | COMPLETE |
+| R-E0 Provisional Score / Timer contract (docs) | COMPLETE (this branch; Draft PR) |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
@@ -106,7 +107,7 @@ Summary of locked direction:
 - `OrbType` = orbs only; obstacles (`ROCK`/`LOCK`/`SLIME`) separate on `PuzzleCell` (ROCK after Gate 1)
 - Legacy Block Placement domain kept until **R-F** playable COMPLETE
 
-Roadmap (post–1-R): **R-A** board/fill → **R-B** DragRoute → **R-C** MatchResolver → **R-D** gravity/refill/cascade → **R-E** PuzzleSession/timer/score → **R-F** UI/Android playable → **Gate 1**
+Roadmap (post–1-R): **R-A** board/fill → **R-B** DragRoute → **R-C** MatchResolver → **R-D** gravity/refill/cascade → **R-E0** Score/Timer contract (docs) → **R-E** PuzzleSession/timer/score → **R-F** UI/Android playable → **Gate 1**
 
 **Phase 1-R docs are on main; R-A+ implementation follows the roadmap above.**
 
@@ -165,6 +166,17 @@ Roadmap (post–1-R): **R-A** board/fill → **R-B** DragRoute → **R-C** Match
 - Cascade: detect → clear → gravity → refill until stable; `MAX_CASCADE_STEPS = 128`
 - `CascadeResult` holds neutral per-step cleared counts — **Score undefined**
 - PuzzleSession / Timer / Score / UI: **not** in R-D
+
+## Phase R-E0 Provisional Score / Timer (docs)
+
+| Doc | Path |
+| --- | --- |
+| Score / Timer / Session contract | [`docs/phase1r/SCORE_TIMER_CONTRACT.md`](docs/phase1r/SCORE_TIMER_CONTRACT.md) |
+| Notes | [`docs/phase1r/IMPLEMENTATION_NOTES.md`](docs/phase1r/IMPLEMENTATION_NOTES.md) (R-E0 section) |
+
+- Provisional Score from per-step cleared cells only (`*100` + depth `*25`)
+- Timer SoT = integer ms; DEV 45000 / 60000 / 90000
+- Session states locked for R-E; **no** gameplay GDScript in R-E0
 
 ## Versions
 
