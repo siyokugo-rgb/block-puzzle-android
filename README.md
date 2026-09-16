@@ -24,6 +24,7 @@ Legacy Block Placement types remain on `main` until post–R-D cleanup. Phase 0 
 | 1-C Game session / tray lifecycle / Game Over | COMPLETE (legacy; SUPERSEDED direction) |
 | 1-D Minimal playable placement slice | SUPERSEDED / REDESIGN — PR #8 closed unmerged |
 | 1-R Route-drag match redesign (docs) | COMPLETE |
+| R-A PuzzleBoard / Orb / stable initial fill | in progress (Draft PR) |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
@@ -104,6 +105,20 @@ Summary of locked direction:
 
 **Do not start R-A until Phase 1-R docs PR is accepted.**
 
+## Phase R-A puzzle board foundation
+
+| Type | Path |
+| --- | --- |
+| `OrbType` | `scripts/puzzle/orb_type.gd` |
+| `PuzzleCell` | `scripts/puzzle/puzzle_cell.gd` |
+| `PuzzleBoard` | `scripts/puzzle/puzzle_board.gd` |
+| `OrbGenerator` | `scripts/puzzle/orb_generator.gd` |
+| Notes | [`docs/phase1r/IMPLEMENTATION_NOTES.md`](docs/phase1r/IMPLEMENTATION_NOTES.md) |
+
+- Match-stable initial fill: row-major `y` outer / `x` inner; left-2 / up-2 exclusion; seeded `randi_range`
+- Legacy `scripts/game/*` untouched
+- Drag / Match / Gravity / Cascade / Timer / Score / Obstacles / UI: **not** in R-A
+
 ## Versions
 
 - Godot **4.7.2** stable (Standard / GDScript)
@@ -168,7 +183,7 @@ API audit: `tooling/admob/UMP_API_AUDIT.md`
 ./tooling/gut/run_tests.sh
 ```
 
-Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`, `tests/test_phase1a.gd`, `tests/test_phase1b.gd`, `tests/test_phase1c.gd`.
+Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`, `tests/test_phase1a.gd`, `tests/test_phase1b.gd`, `tests/test_phase1c.gd`, `tests/test_phase_ra.gd`.
 
 ## Debug APK / AAB
 
