@@ -30,7 +30,7 @@ Legacy Block Placement types remain on `main` until post–**R-F** cleanup. Phas
 | R-D Gravity / refill / cascade | COMPLETE |
 | R-E0 Provisional Score / Timer contract (docs) | COMPLETE |
 | R-E PuzzleSession / timer / score | COMPLETE |
-| R-F Minimal Android playable Score Attack | in progress (this branch; Draft PR) |
+| R-F Minimal Android playable Score Attack | VERIFY FIRST (this branch; Draft PR — Android device pending) |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
