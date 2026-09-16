@@ -95,12 +95,29 @@ Reason: Gate 1 needs a minimal readable score to evaluate core playability.
 
 | Rule | Detail |
 | --- | --- |
-| Type | Internal score is **`int`** |
-| Sign | Never negative; clamps / rejects paths that would subtract below 0 |
+| Storage type | Signed **64-bit** integer (`int64`) |
+| `SCORE_MAX` | **9,223,372,036,854,775,807** (`INT64_MAX`) |
+| Sign | Never negative under normal scoring |
 | Eligible results | Award score **only** for `CascadeResult` that is **valid and stable** |
 | Invalid cascade | `is_valid() == false` → **no** score add |
-| Guard exceeded | `is_guard_exceeded() == true` → **no** score add |
-| Overflow policy | Do **not** silently wrap on overflow. Prefer saturating at `INT_MAX` or fail-closed session ERROR if a single add would overflow. DEV 45/60/90s play is practically far below risk, but long-session extensions must not ignore overflow. |
+| Guard exceeded | `is_guard_exceeded() == true` → **no** score add; session → `ERROR` |
+
+### 2.8 Overflow (LOCKED — fail-closed)
+
+During **normal** score calculation, if a multiply or add is detected to exceed `SCORE_MAX`:
+
+| Action | Required |
+| --- | --- |
+| Wrap / silent overflow | **Forbidden** |
+| Saturate at `SCORE_MAX` | **Forbidden** |
+| Add that move's `move_score` | **Do not add** |
+| Prior session score | **Keep unchanged** |
+| Session phase | → **`ERROR`** |
+| Input | **Blocked** |
+
+Detection must happen **before** mutating the stored session score (checked arithmetic on step/move accumulation and on `session_score + move_score`).
+
+DEV 45/60/90s play is practically far below risk; the rule exists so longer sessions cannot ignore overflow.
 
 ---
 
@@ -196,7 +213,7 @@ When `remaining_ms` reaches 0 during `ROUTE_DRAG`:
 | `ROUTE_DRAG` | timer → 0, swaps 0 | `SESSION_OVER` | no resolve |
 | `RESOLVING` | cascade stable, timer > 0 | `IDLE` | award `move_score` |
 | `RESOLVING` | cascade stable, timer == 0 | `SESSION_OVER` | award `move_score` (includes forced final move) |
-| `RESOLVING` | cascade error / guard | `ERROR` | **no** score add; input blocked |
+| `RESOLVING` | cascade error / guard / **score overflow** | `ERROR` | **no** score add for that move; prior session score kept; input blocked |
 | `ERROR` / `SESSION_OVER` / `INVALID` | play input | ignored | |
 
 Illegal input while `RESOLVING` is ignored.

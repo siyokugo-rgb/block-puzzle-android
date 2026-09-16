@@ -175,6 +175,7 @@ Roadmap (post–1-R): **R-A** board/fill → **R-B** DragRoute → **R-C** Match
 | Notes | [`docs/phase1r/IMPLEMENTATION_NOTES.md`](docs/phase1r/IMPLEMENTATION_NOTES.md) (R-E0 section) |
 
 - Provisional Score from per-step cleared cells only (`*100` + depth `*25`)
+- Score storage: signed 64-bit; overflow → ERROR (no saturate / no wrap)
 - Timer SoT = integer ms; DEV 45000 / 60000 / 90000
 - Session states locked for R-E; **no** gameplay GDScript in R-E0
 

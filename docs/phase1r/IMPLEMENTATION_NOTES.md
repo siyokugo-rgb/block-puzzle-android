@@ -271,7 +271,9 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 - `base_score = cleared_cells * 100`
 - `cascade_bonus = cleared_cells * 25 * (step_index - 1)`
 - `move_score = sum(step_score)`
-- Integer only; never negative; invalid / guard-exceeded cascades award **0**
+- Storage: signed **64-bit** int; `SCORE_MAX = 9,223,372,036,854,775,807`
+- Never negative under normal scoring; invalid / guard-exceeded cascades award **0**
+- Overflow on multiply/add past `SCORE_MAX`: **no wrap, no saturate**; do not add that move; keep prior session score; session → `ERROR` (input blocked)
 - Do not call this “Combo”; use cascade step / depth
 - Excluded: group count, route length, speed, color, specials, ROCK, Rescue, time bonus, stage, difficulty
 
