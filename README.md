@@ -24,7 +24,8 @@ Legacy Block Placement types remain on `main` until post–**R-F** cleanup. Phas
 | 1-C Game session / tray lifecycle / Game Over | COMPLETE (legacy; SUPERSEDED direction) |
 | 1-D Minimal playable placement slice | SUPERSEDED / REDESIGN — PR #8 closed unmerged |
 | 1-R Route-drag match redesign (docs) | COMPLETE |
-| R-A PuzzleBoard / Orb / stable initial fill | COMPLETE (Draft PR) |
+| R-A PuzzleBoard / Orb / stable initial fill | COMPLETE |
+| R-B DragRoute / 4-dir route swap | COMPLETE |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
@@ -105,7 +106,7 @@ Summary of locked direction:
 
 Roadmap (post–1-R): **R-A** board/fill → **R-B** DragRoute → **R-C** MatchResolver → **R-D** gravity/refill/cascade → **R-E** PuzzleSession/timer/score → **R-F** UI/Android playable → **Gate 1**
 
-**Do not start R-A until Phase 1-R docs PR is accepted.**
+**Phase 1-R docs are on main; R-A+ implementation follows the roadmap above.**
 
 ## Phase R-A puzzle board foundation
 
@@ -122,6 +123,18 @@ Roadmap (post–1-R): **R-A** board/fill → **R-B** DragRoute → **R-C** Match
 - Match detection is **not** on `PuzzleBoard` (test-side helper only; MatchResolver = R-C)
 - Legacy `scripts/game/*` untouched
 - Drag / Match / Gravity / Cascade / Timer / Score / Obstacles / UI: **not** in R-A
+
+## Phase R-B DragRoute
+
+| Type | Path |
+| --- | --- |
+| `DragRoute` | `scripts/puzzle/drag_route.gd` |
+| Notes | [`docs/phase1r/IMPLEMENTATION_NOTES.md`](docs/phase1r/IMPLEMENTATION_NOTES.md) (R-B section) |
+
+- Private board binding at `begin`; `try_step` does not take a board
+- 4-dir swaps via `PuzzleBoard.swap`; revisit / backtrack OK; same-cell jitter no-op
+- `StepResult`: `SWAPPED` / `NO_CHANGE_SAME_CELL` / `REJECTED`
+- No match resolve / release / session / timer in R-B
 
 ## Versions
 
@@ -187,7 +200,7 @@ API audit: `tooling/admob/UMP_API_AUDIT.md`
 ./tooling/gut/run_tests.sh
 ```
 
-Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`, `tests/test_phase1a.gd`, `tests/test_phase1b.gd`, `tests/test_phase1c.gd`, `tests/test_phase_ra.gd`.
+Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`, `tests/test_phase1a.gd`, `tests/test_phase1b.gd`, `tests/test_phase1c.gd`, `tests/test_phase_ra.gd`, `tests/test_phase_rb.gd`.
 
 ## Debug APK / AAB
 
