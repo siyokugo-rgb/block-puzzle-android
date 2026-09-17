@@ -472,11 +472,14 @@ func test_session_rock_layout_hp2_and_off_baseline() -> void:
 	assert_true(rock.is_valid())
 	assert_eq(rock.obstacle_mode(), PuzzleSession.ObstacleMode.ROCK)
 	assert_eq(rock.rock_count(), 3)
-	for pos in PuzzleSession.DEV_ROCK_LAYOUT:
+	var positions := rock.initial_rock_positions()
+	assert_eq(positions.size(), PuzzleSession.INITIAL_ROCK_COUNT)
+	for pos in positions:
+		assert_eq(pos.y, 0)
 		assert_true(rock.is_rock_at(pos))
 		assert_eq(rock.orb_at(pos), -1)
 		assert_eq(rock.rock_hp_at(pos), 2)
-	assert_false(rock.begin_drag(PuzzleSession.DEV_ROCK_LAYOUT[0]))
+	assert_false(rock.begin_drag(positions[0]))
 
 	var off := PuzzleSession.create_score_attack(
 		6, 6, 42, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.OFF
@@ -508,7 +511,8 @@ func test_ready_helpers_support_obstacle_selection() -> void:
 	view.restart_selected_session()
 	assert_eq(view._session.obstacle_mode(), PuzzleSession.ObstacleMode.ROCK)
 	assert_eq(view._session.rock_count(), 3)
-	for pos in PuzzleSession.DEV_ROCK_LAYOUT:
+	for pos in view._session.initial_rock_positions():
+		assert_eq(pos.y, 0)
 		assert_eq(view._session.rock_hp_at(pos), 2)
 
 
@@ -639,12 +643,22 @@ func test_respawn_grace_and_one_per_move() -> void:
 	assert_true(session.is_valid())
 	assert_eq(session.rock_count(), 3)
 	assert_eq(session.pending_rock_respawns(), 0)
-	assert_true(session.begin_drag(Vector2i(0, 0)))
+	# Pick a non-ROCK cell for zero-swap release (seeded columns may occupy (0,0)).
+	var drag_cell := Vector2i(-1, -1)
+	for y in range(6):
+		for x in range(6):
+			var p := Vector2i(x, y)
+			if not session.is_rock_at(p) and session.orb_at(p) >= 0:
+				drag_cell = p
+				break
+		if drag_cell.x >= 0:
+			break
+	assert_true(session.begin_drag(drag_cell))
 	var zero := session.release_drag()
 	assert_true(zero.is_success())
 	assert_eq(session.pending_rock_respawns(), 0)
 	assert_false(session.respawn_armed())
-	assert_true(session._board.clear_obstacle(PuzzleSession.DEV_ROCK_LAYOUT[0]))
+	assert_true(session._board.clear_obstacle(session.initial_rock_positions()[0]))
 	assert_eq(session.rock_count(), 2)
 	session._pending_rock_respawns = 1
 	session._respawn_armed = true
@@ -663,8 +677,8 @@ func test_respawn_top_row_only_never_mid_board() -> void:
 	var session := PuzzleSession.create_score_attack(
 		6, 6, 55, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
 	)
-	assert_true(session._board.clear_obstacle(PuzzleSession.DEV_ROCK_LAYOUT[0]))
-	assert_true(session._board.clear_obstacle(PuzzleSession.DEV_ROCK_LAYOUT[1]))
+	assert_true(session._board.clear_obstacle(session.initial_rock_positions()[0]))
+	assert_true(session._board.clear_obstacle(session.initial_rock_positions()[1]))
 	session._pending_rock_respawns = 2
 	session._respawn_armed = true
 	for _i in range(2):
@@ -684,8 +698,8 @@ func test_respawn_two_destroys_refill_one_per_move() -> void:
 		6, 6, 99, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
 	)
 	assert_true(session.is_valid())
-	assert_true(session._board.clear_obstacle(PuzzleSession.DEV_ROCK_LAYOUT[0]))
-	assert_true(session._board.clear_obstacle(PuzzleSession.DEV_ROCK_LAYOUT[1]))
+	assert_true(session._board.clear_obstacle(session.initial_rock_positions()[0]))
+	assert_true(session._board.clear_obstacle(session.initial_rock_positions()[1]))
 	assert_eq(session.rock_count(), 1)
 	session._pending_rock_respawns = 2
 	session._respawn_armed = true
@@ -729,7 +743,7 @@ func test_same_seed_same_spawn_column() -> void:
 		var session := PuzzleSession.create_score_attack(
 			6, 6, 42, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
 		)
-		assert_true(session._board.clear_obstacle(PuzzleSession.DEV_ROCK_LAYOUT[0]))
+		assert_true(session._board.clear_obstacle(session.initial_rock_positions()[0]))
 		session._pending_rock_respawns = 1
 		session._respawn_armed = true
 		var spawns: Array = session._apply_rock_respawn_after_resolve(0)
@@ -752,7 +766,7 @@ func test_obstacle_rng_independent_of_orb_stream() -> void:
 	assert_eq(a.board_snapshot(), b.board_snapshot())
 	a._pending_rock_respawns = 1
 	a._respawn_armed = true
-	assert_true(a._board.clear_obstacle(PuzzleSession.DEV_ROCK_LAYOUT[0]))
+	assert_true(a._board.clear_obstacle(a.initial_rock_positions()[0]))
 	var sp := a._apply_rock_respawn_after_resolve(0)
 	assert_eq(sp.size(), 1)
 	var c := PuzzleSession.create_score_attack(
@@ -862,7 +876,7 @@ func test_presenter_respawn_drop_from_above() -> void:
 	var session := PuzzleSession.create_score_attack(
 		6, 6, 42, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
 	)
-	assert_true(session._board.clear_obstacle(PuzzleSession.DEV_ROCK_LAYOUT[0]))
+	assert_true(session._board.clear_obstacle(session.initial_rock_positions()[0]))
 	session._pending_rock_respawns = 1
 	session._respawn_armed = true
 	var spawns: Array = session._apply_rock_respawn_after_resolve(0)
@@ -1104,3 +1118,167 @@ func test_delta_partition_same_final_visual() -> void:
 	assert_eq(a.orb_at(Vector2i(0, 2)), OrbType.Id.ORB_1)
 	assert_eq(b.orb_at(Vector2i(0, 2)), OrbType.Id.ORB_1)
 	assert_eq(total, ResolutionPresenter.fall_duration_ms(2))
+
+
+# --- 60fps config / DEV monitor ---
+
+
+func test_fps_target_and_dev_monitor_config() -> void:
+	assert_eq(PuzzleGameView.TARGET_FPS, 60)
+	assert_eq(int(ProjectSettings.get_setting("application/run/max_fps")), 60)
+	assert_true(PuzzleGameView.SHOW_DEV_FPS)
+	assert_gte(PuzzleGameView.FPS_SAMPLE_INTERVAL_MS, 250.0)
+	assert_lte(PuzzleGameView.FPS_SAMPLE_INTERVAL_MS, 500.0)
+	var view := PuzzleGameView.new()
+	add_child_autofree(view)
+	assert_eq(Engine.max_fps, PuzzleGameView.TARGET_FPS)
+	assert_ne(view._fps_label, null)
+
+
+# --- Seeded random initial ROCK ---
+
+
+func test_pick_unique_columns_without_replacement() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = PuzzleSession.derive_obstacle_rng_seed(42)
+	var cols := PuzzleSession.pick_unique_columns(rng, 6, 3)
+	assert_eq(cols.size(), 3)
+	assert_true(cols[0] < cols[1])
+	assert_true(cols[1] < cols[2])
+	assert_gte(cols[0], 0)
+	assert_lt(cols[2], 6)
+	# Same seed → same pick sequence when RNG is fresh.
+	var rng2 := RandomNumberGenerator.new()
+	rng2.seed = PuzzleSession.derive_obstacle_rng_seed(42)
+	assert_eq(PuzzleSession.pick_unique_columns(rng2, 6, 3), cols)
+
+
+func test_initial_rocks_seeded_top_row_unique_hp2() -> void:
+	var session := PuzzleSession.create_score_attack(
+		6, 6, 42, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
+	)
+	assert_true(session.is_valid())
+	var positions := session.initial_rock_positions()
+	assert_eq(positions.size(), 3)
+	assert_eq(session.rock_count(), 3)
+	var seen: Dictionary = {}
+	for pos in positions:
+		assert_eq(pos.y, 0)
+		assert_gte(pos.x, 0)
+		assert_lt(pos.x, 6)
+		assert_false(seen.has(pos.x))
+		seen[pos.x] = true
+		assert_true(session.is_rock_at(pos))
+		assert_eq(session.rock_hp_at(pos), 2)
+		assert_eq(session.orb_at(pos), -1)
+	# Sorted by x.
+	assert_true(positions[0].x < positions[1].x)
+	assert_true(positions[1].x < positions[2].x)
+
+
+func test_same_seed_same_initial_rock_columns() -> void:
+	var a := PuzzleSession.create_score_attack(
+		6, 6, 42, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
+	)
+	var b := PuzzleSession.create_score_attack(
+		6, 6, 42, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
+	)
+	assert_eq(a.initial_rock_positions(), b.initial_rock_positions())
+	assert_eq(a.board_snapshot(), b.board_snapshot())
+	assert_eq(a.obstacle_snapshot(), b.obstacle_snapshot())
+
+
+func test_multiple_seeds_initial_rocks_always_valid() -> void:
+	for seed_value in [1, 7, 42, 99, 12345]:
+		var session := PuzzleSession.create_score_attack(
+			6, 6, seed_value, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
+		)
+		assert_true(session.is_valid())
+		var positions := session.initial_rock_positions()
+		assert_eq(positions.size(), 3)
+		var seen: Dictionary = {}
+		for pos in positions:
+			assert_eq(pos.y, 0)
+			assert_false(seen.has(pos.x))
+			seen[pos.x] = true
+			assert_eq(session.rock_hp_at(pos), 2)
+
+
+func test_initial_rocks_do_not_consume_orb_rng() -> void:
+	var off := PuzzleSession.create_score_attack(
+		6, 6, 42, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.OFF
+	)
+	var rock := PuzzleSession.create_score_attack(
+		6, 6, 42, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
+	)
+	assert_eq(off.rock_count(), 0)
+	assert_eq(rock.rock_count(), 3)
+	# Non-ROCK cells share the same orb fill (OrbGenerator untouched by Obstacle RNG).
+	for y in range(6):
+		for x in range(6):
+			var pos := Vector2i(x, y)
+			if rock.is_rock_at(pos):
+				continue
+			assert_eq(off.orb_at(pos), rock.orb_at(pos))
+
+
+func test_opening_rock_presentation_blocks_input_and_timer() -> void:
+	var view := PuzzleGameView.new()
+	add_child_autofree(view)
+	view.select_obstacle_mode(PuzzleSession.ObstacleMode.ROCK)
+	view.start_selected_session()
+	assert_true(view.has_playable_session())
+	assert_true(view.is_presentation_busy())
+	assert_false(view.board_input_enabled())
+	var rem := view._session.remaining_ms()
+	view._process(0.05)
+	assert_eq(view._session.remaining_ms(), rem)
+	assert_true(
+		view._presenter.phase == ResolutionPresenter.Phase.RESPAWN_WARN
+		or view._presenter.phase == ResolutionPresenter.Phase.RESPAWN_SHOW
+	)
+	var cell_size := 40.0
+	var pos: Vector2i = view._session.initial_rock_positions()[0]
+	var warn := view._presenter.spawn_draw_offset(pos, cell_size)
+	assert_eq(warn.x, 0.0)
+	assert_lt(warn.y, 0.0)
+	# Finish opening.
+	for _i in range(40):
+		if not view.is_presentation_busy():
+			break
+		view._process(0.05)
+	assert_false(view.is_presentation_busy())
+	assert_true(view.board_input_enabled())
+	assert_true(view._session.is_rock_at(pos))
+	assert_eq(view._session.rock_hp_at(pos), 2)
+
+
+func test_opening_off_has_no_rock_drop() -> void:
+	var view := PuzzleGameView.new()
+	add_child_autofree(view)
+	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
+	view.start_selected_session()
+	assert_true(view.has_playable_session())
+	assert_false(view.is_presentation_busy())
+	assert_eq(view._session.rock_count(), 0)
+	assert_eq(view._session.initial_rock_positions().size(), 0)
+
+
+func test_restart_reuses_dev_seed_same_initial_rocks() -> void:
+	var view := PuzzleGameView.new()
+	add_child_autofree(view)
+	view.select_obstacle_mode(PuzzleSession.ObstacleMode.ROCK)
+	view.start_selected_session()
+	# Drain opening presentation.
+	for _i in range(40):
+		if not view.is_presentation_busy():
+			break
+		view._process(0.05)
+	var first := view._session.initial_rock_positions()
+	view.restart_selected_session()
+	for _i in range(40):
+		if not view.is_presentation_busy():
+			break
+		view._process(0.05)
+	assert_eq(view._session.session_seed(), PuzzleGameView.DEV_SEED)
+	assert_eq(view._session.initial_rock_positions(), first)

@@ -456,15 +456,20 @@ improve route thinking / replayability without becoming pure annoyance?
 - Fall motion: smoothstep `_ease_fall` + distance-based duration
   (`FALL_BASE_MS`/`FALL_PER_CELL_MS`, clamped `FALL_MIN_MS`..`FALL_MAX_MS`)
 - Gravity / refill / respawn visuals are **top → down only** (no horizontal / upward / overshoot)
+- START opening: seeded initial R2 rocks drop from above into top-row targets (same respawn-style path)
 - `presentation_busy` blocks input/timers; not a gameplay SoT
+- Render target: **60fps** (`application/run/max_fps=60` + `Engine.max_fps`); animations stay delta_ms-based
+- DEV-only FPS overlay (`SHOW_DEV_FPS`, ~500ms sample) — not production UI
 
 ### DEV A/B
 
 - READY: Obstacle **OFF** | **ROCK** (default ROCK); selection only until START
-- ROCK layout (fixed Gate 2 DEV, not production): top row `(1,0)`, `(3,0)`, `(4,0)`
-  after match-stable fill — all start at HP=2
+- ROCK initial layout (Gate 2 DEV): **3 unique top-row columns** via Obstacle RNG
+  (`pick_unique_columns`, sorted for placement); all HP=2
+  — same session seed → same columns; Restart reuses DEV seed 42
 - Same seed 42 / Session 60s / Move 2.0s / 6×6 / 5 OrbTypes
 - HUD: `ROCK: N` remaining count; cells draw gray + `"R2"` / `"R1"`
+- DEV FPS: corner `FPS` / `Frame ms` (not production)
 
 ### Future — SLIME (docs only; not implemented)
 
@@ -478,7 +483,8 @@ Hypothesis only — do **not** add `ObstacleType.SLIME` / GDScript / tests in R-
 
 ### Status
 
-- **FIX FIRST** (presentation smoothness) → **VERIFY FIRST** after smooth-fall APK; **Gate 2 NOT STARTED**
+- **FIX FIRST** (60fps target + seeded random initial ROCK) → **VERIFY FIRST** after APK;
+  **Gate 2 NOT STARTED**
 - Do **not** merge R-G to main until Gate 2 human comparison
 - Do **not** start LOCK / SLIME / Rescue
 

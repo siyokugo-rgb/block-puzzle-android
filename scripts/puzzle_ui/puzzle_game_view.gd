@@ -1,7 +1,7 @@
 class_name PuzzleGameView
 extends Control
 
-## Phase R-F: minimal Score Attack view. PuzzleSession is the only game-state SoT.
+## Phase R-F/R-G: minimal Score Attack view. PuzzleSession is the only game-state SoT.
 ## Pre-session READY is UI-only (no PuzzleSession.State.READY). Session starts on START/Restart.
 
 const DEV_SEED := 42
@@ -9,6 +9,11 @@ const DEV_WIDTH := 6
 const DEV_HEIGHT := 6
 const DURATIONS_MS: Array[int] = [45000, 60000, 90000]
 const DEFAULT_DURATION_MS := 60000
+## Gameplay render upper target (matches project.godot application/run/max_fps).
+const TARGET_FPS := 60
+## DEV-only FPS overlay (not production UI).
+const SHOW_DEV_FPS := true
+const FPS_SAMPLE_INTERVAL_MS := 500.0
 
 var _session: PuzzleSession = null
 var _mapper := GridInputMapper.new()
@@ -36,11 +41,15 @@ var _start_button: Button = null
 var _restart_button: Button = null
 var _board_area: Control = null
 var _presenter := ResolutionPresenter.new()
+var _fps_label: Label = null
+var _fps_sample_accum_ms: float = 0.0
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	focus_mode = Control.FOCUS_ALL
+	# Reinforce project.godot run/max_fps (Godot 4.7 Engine.max_fps).
+	Engine.max_fps = TARGET_FPS
 	_build_hud()
 	_enter_ready()
 	set_process(true)
@@ -205,6 +214,21 @@ func _build_hud() -> void:
 	_board_area.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hud.add_child(_board_area)
 
+	if SHOW_DEV_FPS:
+		_fps_label = Label.new()
+		_fps_label.name = "DevFpsLabel"
+		_fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_fps_label.add_theme_font_size_override("font_size", 12)
+		_fps_label.add_theme_color_override("font_color", Color(0.85, 0.95, 0.75, 0.9))
+		_fps_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		_fps_label.offset_left = -140.0
+		_fps_label.offset_top = 8.0
+		_fps_label.offset_right = -8.0
+		_fps_label.offset_bottom = 48.0
+		_fps_label.text = "FPS: --\nFrame: -- ms"
+		add_child(_fps_label)
+
 
 func _enter_ready() -> void:
 	_session = null
@@ -267,7 +291,41 @@ func _start_session(duration_ms: int) -> void:
 	_refresh_obstacle_buttons()
 	_refresh_action_buttons()
 	_refresh_hud()
+	_begin_opening_rock_presentation_if_needed()
 	queue_redraw()
+
+
+## Presentation-only: initial R2 rocks drop from above into seeded top-row columns.
+## Domain already holds final rocks; timer pauses while presenter is busy.
+func _begin_opening_rock_presentation_if_needed() -> void:
+	if _session == null or not _session.is_valid():
+		return
+	if _session.obstacle_mode() != PuzzleSession.ObstacleMode.ROCK:
+		return
+	var positions := _session.initial_rock_positions()
+	if positions.is_empty():
+		return
+	var before_orbs: Array = _session.board_snapshot()
+	var before_obs: Array = _session.obstacle_snapshot()
+	var before_hp: Array = _session.obstacle_hp_snapshot()
+	var spawns: Array = []
+	for pos in positions:
+		before_obs[pos.y][pos.x] = ObstacleType.Id.NONE
+		before_hp[pos.y][pos.x] = 0
+		spawns.append(RockSpawnTrace.create(pos, PuzzleCell.ROCK_INITIAL_HP))
+	var move := SessionMoveResult.resolved(
+		0,
+		[],
+		0,
+		_session.score(),
+		false,
+		before_orbs,
+		before_obs,
+		before_hp,
+		[],
+		spawns
+	)
+	_presenter.begin(move)
 
 
 func _refresh_duration_buttons() -> void:
@@ -300,6 +358,7 @@ func _refresh_action_buttons() -> void:
 
 
 func _process(delta: float) -> void:
+	_update_dev_fps_monitor(delta)
 	# Presentation playback: no Session/Move timer drain.
 	if _presenter != null and _presenter.is_busy():
 		_presenter.advance(delta * 1000.0)
@@ -337,6 +396,21 @@ func _process(delta: float) -> void:
 		_on_domain_time_advanced(before_state)
 		_refresh_hud()
 		queue_redraw()
+
+
+## DEV-only FPS sample; throttled so Label text is not rewritten every frame.
+func _update_dev_fps_monitor(delta: float) -> void:
+	if not SHOW_DEV_FPS or _fps_label == null:
+		return
+	_fps_sample_accum_ms += delta * 1000.0
+	if _fps_sample_accum_ms < FPS_SAMPLE_INTERVAL_MS:
+		return
+	_fps_sample_accum_ms = 0.0
+	var fps := Engine.get_frames_per_second()
+	var frame_ms := 0.0
+	if fps > 0.0:
+		frame_ms = 1000.0 / float(fps)
+	_fps_label.text = "FPS: %d\nFrame: %.1f ms" % [int(round(fps)), frame_ms]
 
 
 func _gui_input(event: InputEvent) -> void:

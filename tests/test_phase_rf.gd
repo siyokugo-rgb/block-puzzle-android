@@ -382,6 +382,8 @@ func test_ready_launch_helpers_and_start_flow() -> void:
 	assert_true(view.is_awaiting_start())
 
 	# START creates session; timer full; Move inactive; board input enabled in IDLE.
+	# R-F baseline uses Obstacle OFF (ROCK default would play opening drop).
+	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
 	view.select_duration(60000)
 	view.start_selected_session()
 	assert_false(view.is_awaiting_start())

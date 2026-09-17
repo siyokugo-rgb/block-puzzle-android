@@ -19,22 +19,16 @@ const SCORE_MAX := 9223372036854775807
 ## Per-drag move budget (Phase R-F Gate 1 DEV value; not production final).
 const MOVE_DURATION_MS := 2000
 
-## Gate 2 DEV: Obstacle OFF keeps R-F baseline; ROCK uses fixed 3-rock layout.
+## Gate 2 DEV: Obstacle OFF keeps R-F baseline; ROCK uses seeded random top-row rocks.
 enum ObstacleMode {
 	OFF,
 	ROCK,
 }
 
-## Fixed DEV ROCK positions — top row only (falling-token Gate 2 DEV).
-## Columns x=1,3,4 at y=0. Not production layout.
-const DEV_ROCK_LAYOUT: Array[Vector2i] = [
-	Vector2i(1, 0),
-	Vector2i(3, 0),
-	Vector2i(4, 0),
-]
-
-## Gate 2 DEV target live ROCK count (respawn toward this).
+## Gate 2 DEV target live ROCK count (initial + respawn toward this).
 const TARGET_ROCK_COUNT := 3
+## Initial ROCK count at START (top-row unique columns via Obstacle RNG).
+const INITIAL_ROCK_COUNT := 3
 
 ## Obstacle RNG seed derivation (independent of OrbGenerator stream).
 ## Fixed: obstacle_seed = session_seed XOR OBSTACLE_RNG_SEED_XOR
@@ -57,11 +51,13 @@ var _pending_rock_respawns: int = 0
 var _respawn_armed: bool = false
 var _session_seed: int = 0
 var _last_move_result: SessionMoveResult = null
+## Sorted top-row ROCK positions chosen at START (empty when OFF).
+var _initial_rock_positions: Array[Vector2i] = []
 
 
 ## Create a Score Attack session. Uses one OrbGenerator for fill + later cascade refill.
 ## Optional max_cascade_steps is an internal safety seam (default 128); not a gameplay flag.
-## obstacle_mode: OFF = R-F baseline; ROCK = apply DEV_ROCK_LAYOUT after stable fill.
+## obstacle_mode: OFF = R-F baseline; ROCK = seeded random top-row rocks after stable fill.
 static func create_score_attack(
 	width: int,
 	height: int,
@@ -99,6 +95,7 @@ func _build(
 	_respawn_armed = false
 	_session_seed = seed_value
 	_last_move_result = null
+	_initial_rock_positions.clear()
 
 	if width <= 0 or height <= 0:
 		return
@@ -122,8 +119,15 @@ func _build(
 	if not opening.is_valid() or opening.has_matches():
 		return
 
+	# Obstacle RNG is independent of OrbGenerator. Created before initial ROCK pick so
+	# the same stream continues into respawn (no reseed).
+	var obstacle_rng := RandomNumberGenerator.new()
+	obstacle_rng.seed = derive_obstacle_rng_seed(seed_value)
+	var initial_rocks: Array[Vector2i] = []
+
 	if obstacle_mode == ObstacleMode.ROCK:
-		if not _apply_dev_rock_layout(board):
+		initial_rocks = _place_initial_rocks(board, obstacle_rng, INITIAL_ROCK_COUNT)
+		if initial_rocks.is_empty():
 			return
 		# Replacing orbs with ROCK cannot create matches (ROCK has no orb).
 		var after_rocks := MatchResolver.detect(board)
@@ -138,8 +142,8 @@ func _build(
 	_obstacle_mode = obstacle_mode as ObstacleMode
 	_pending_rock_respawns = 0
 	_respawn_armed = false
-	_obstacle_rng = RandomNumberGenerator.new()
-	_obstacle_rng.seed = derive_obstacle_rng_seed(seed_value)
+	_obstacle_rng = obstacle_rng
+	_initial_rock_positions = initial_rocks
 	_state = State.IDLE
 
 
@@ -148,13 +152,44 @@ static func derive_obstacle_rng_seed(session_seed: int) -> int:
 	return session_seed ^ OBSTACLE_RNG_SEED_XOR
 
 
-static func _apply_dev_rock_layout(board: PuzzleBoard) -> bool:
-	for pos in DEV_ROCK_LAYOUT:
-		if not board.in_bounds(pos):
-			return false
+## Without-replacement column sample via Obstacle RNG. Sorted ascending for stable placement.
+static func pick_unique_columns(
+	rng: RandomNumberGenerator,
+	width: int,
+	count: int
+) -> Array[int]:
+	var out: Array[int] = []
+	if rng == null or width <= 0 or count <= 0 or count > width:
+		return out
+	var candidates: Array[int] = []
+	for x in range(width):
+		candidates.append(x)
+	for _i in range(count):
+		var idx := rng.randi_range(0, candidates.size() - 1)
+		out.append(candidates[idx])
+		candidates.remove_at(idx)
+	out.sort()
+	return out
+
+
+## Place `count` R2 rocks on top row using Obstacle RNG. Empty array on failure.
+static func _place_initial_rocks(
+	board: PuzzleBoard,
+	rng: RandomNumberGenerator,
+	count: int
+) -> Array[Vector2i]:
+	var placed: Array[Vector2i] = []
+	if board == null or not board.is_valid() or rng == null:
+		return placed
+	var columns := pick_unique_columns(rng, board.width(), count)
+	if columns.size() != count:
+		return placed
+	for x in columns:
+		var pos := Vector2i(x, 0)
 		if not board.set_rock(pos):
-			return false
-	return true
+			return []
+		placed.append(pos)
+	return placed
 
 
 # --- Read API ---
@@ -216,6 +251,24 @@ func obstacle_snapshot() -> Array:
 	if _board == null or not _board.is_valid():
 		return []
 	return _board.snapshot_obstacle_types()
+
+
+func obstacle_hp_snapshot() -> Array:
+	if _board == null or not _board.is_valid():
+		return []
+	return _board.snapshot_obstacle_hp()
+
+
+func session_seed() -> int:
+	return _session_seed
+
+
+## Defensive copy of START-time top-row ROCK positions (sorted by x). Empty when OFF.
+func initial_rock_positions() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for pos in _initial_rock_positions:
+		out.append(pos)
+	return out
 
 
 func obstacle_mode() -> ObstacleMode:
