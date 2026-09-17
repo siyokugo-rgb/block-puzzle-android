@@ -567,8 +567,10 @@ func _draw() -> void:
 				draw_rect(inset, rock_fill, true)
 				draw_rect(inset, Color(0.20, 0.20, 0.22), false, 2.0)
 				var font := ThemeDB.fallback_font
-				var font_size := int(maxi(12, int(rect.size.x * 0.40)))
-				var label := "R"
+				var font_size := int(maxi(12, int(rect.size.x * 0.36)))
+				# Gate 2 DEV: HP-visible label (R2 / R1). Not production art.
+				var hp := _session.rock_hp_at(cell)
+				var label := "R%d" % hp if hp > 0 else "R"
 				var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 				var text_pos := inset.position + (inset.size - text_size) * 0.5 + Vector2(0, text_size.y * 0.8)
 				draw_string(font, text_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0.95, 0.95, 0.92))

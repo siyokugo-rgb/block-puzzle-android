@@ -417,30 +417,46 @@ without becoming pure annoyance? **Not** a feature-complete obstacle framework.
 ### Domain
 
 - `ObstacleType`: `NONE` / `ROCK` only (`scripts/puzzle/obstacle_type.gd`)
-- `PuzzleCell`: optional orb + optional obstacle; **ROCK ⇒ no orb** (invariant)
-- `PuzzleBoard`: `has_obstacle` / `obstacle_at` / `set_rock` / `clear_obstacle` /
-  `snapshot_obstacle_types` / `rock_count`; `is_empty` = no orb **and** no obstacle
-- Swap SoT: ROCK cells cannot be swap source/destination (DragRoute has no ROCK special-case)
-- Match: ROCK has no orb → naturally breaks runs (no ROCK-specific match rule)
-- Cascade order: detect → adjacent ROCK union destroy (1-hit, orthogonal, simultaneous) →
-  clear matched orbs → segmented gravity → refill skips ROCK (no RNG on ROCK cells)
-- Gravity: living ROCK is a vertical barrier; columns split into segments; orbs never cross ROCK
+  — durability is **not** a separate ObstacleType
+- `PuzzleCell`: optional orb + optional obstacle + `_obstacle_hp`; **ROCK ⇒ no orb**
+- Initial ROCK: **HP = 2** (Gate 2 DEV; not production final)
+- `PuzzleBoard`: `set_rock` / `clear_obstacle` / `rock_hp_at` / `damage_rock` /
+  `snapshot_obstacle_types` / `snapshot_obstacle_hp` / `rock_count`
+  — existing ROCK → `set_rock` fails (no silent HP heal)
+- Damage unit: **max 1 hit per ROCK per cascade step**
+  (multi-adjacent matched cells in the same step still deal 1 damage)
+- Cross-cascade-step damage in the same move is legal (step1 HP2→1, step2 HP1→0)
+- Cascade order: detect → unique adjacent ROCK hits → destroy only HP=0 →
+  clear matched orbs → segmented gravity → refill skips living ROCK
+- HP1 / HP2: both impassable, both gravity barriers, both refill-skipped
 - Score formula unchanged (no ROCK destruction bonus)
 
 ### DEV A/B
 
 - READY: Obstacle **OFF** | **ROCK** (default ROCK); selection only until START
 - ROCK layout (fixed, not production): `(1,2)`, `(3,3)`, `(4,1)` after match-stable fill
+  — all start at HP=2
 - Same seed 42 / Session 60s / Move 2.0s / 6×6 / 5 OrbTypes
-- HUD: `ROCK: N` remaining count; cells draw gray + `"R"` (no orb number on ROCK)
+- HUD: `ROCK: N` remaining count; cells draw gray + `"R2"` / `"R1"`
+
+### Future — SLIME (docs only; not implemented)
+
+Hypothesis only — do **not** add `ObstacleType.SLIME` / GDScript / tests in R-G:
+
+- Does **not** steal Move Timer budget
+- Not a hard impassable wall like ROCK
+- Route traversal candidate: may convert the carried orb’s color (exact rule undecided)
+- Intended as a route-decision tool, not pure annoyance
+- Deferred until after R-G / Gate 2
 
 ### Status
 
-- Implementation + GUT in progress toward COMPLETE; **Gate 2 NOT STARTED**
+- **VERIFY FIRST** after HP2 change + APK; **Gate 2 NOT STARTED**
 - Do **not** merge R-G to main until Gate 2 human comparison
 - Do **not** start LOCK / SLIME / Rescue
 
 ### Out of R-G scope
 
-- LOCK / SLIME / Rescue / Stage Mode / Score redesign / durability / production art
+- LOCK / SLIME / Rescue / Stage Mode / Score redesign / production art
 - Large obstacle event framework
+- Production-final ROCK durability

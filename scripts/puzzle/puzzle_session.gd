@@ -206,6 +206,13 @@ func is_rock_at(pos: Vector2i) -> bool:
 	return _board.is_rock(pos)
 
 
+## ROCK HP at pos (1 or 2), or 0 if not ROCK / invalid.
+func rock_hp_at(pos: Vector2i) -> int:
+	if _board == null or not _board.is_valid():
+		return 0
+	return _board.rock_hp_at(pos)
+
+
 func has_active_drag() -> bool:
 	return _route != null and _route.is_active()
 

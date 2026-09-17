@@ -1,9 +1,12 @@
 class_name CascadeResolver
 extends RefCounted
 
-## Phase R-D / R-G: match → adjacent ROCK break → clear → gravity → refill.
+## Phase R-D / R-G: match → adjacent ROCK damage → clear → gravity → refill.
 ## Uses MatchResolver + GravityResolver + existing OrbGenerator instance.
 ## No PuzzleSession / Timer / Score / UI.
+##
+## ROCK damage unit: at most 1 hit per ROCK per cascade step
+## (multi-adjacent matched cells in the same step still deal 1 damage).
 
 const MAX_CASCADE_STEPS := 128
 
@@ -24,7 +27,8 @@ static func resolve(
 		return CascadeResult.invalid()
 
 	var cleared_per_step: Array[int] = []
-	var rocks_per_step: Array[int] = []
+	var rocks_destroyed_per_step: Array[int] = []
+	var rock_hits_per_step: Array[int] = []
 	var steps := 0
 
 	while true:
@@ -32,19 +36,24 @@ static func resolve(
 		if not match_result.is_valid():
 			return CascadeResult.invalid()
 		if not match_result.has_matches():
-			return CascadeResult.stable_success(steps, cleared_per_step, rocks_per_step)
+			return CascadeResult.stable_success(
+				steps, cleared_per_step, rocks_destroyed_per_step, rock_hits_per_step
+			)
 
 		# Already completed max_steps resolve cycles and matches remain → guard.
 		if steps >= max_steps:
-			return CascadeResult.guard_exceeded(steps, cleared_per_step, rocks_per_step)
+			return CascadeResult.guard_exceeded(
+				steps, cleared_per_step, rocks_destroyed_per_step, rock_hits_per_step
+			)
 
 		var matched := match_result.matched_cells_snapshot()
 		var rocks := collect_adjacent_rocks(board, matched)
-		# 1-hit ROCK destruction (simultaneous), before orb clear so gravity sees empties.
-		for rock_pos in rocks:
-			if not board.clear_obstacle(rock_pos):
-				return CascadeResult.invalid()
-		rocks_per_step.append(rocks.size())
+		# Per ROCK: max 1 damage this step. HP0 rocks destroy before orb clear.
+		var hit_stats := apply_rock_hits(board, rocks)
+		if hit_stats.get("ok", false) != true:
+			return CascadeResult.invalid()
+		rock_hits_per_step.append(int(hit_stats.get("hits", 0)))
+		rocks_destroyed_per_step.append(int(hit_stats.get("destroyed", 0)))
 
 		var cleared := MatchResolver.clear_current_matches(board)
 		if not cleared.is_valid() or not cleared.has_matches():
@@ -85,6 +94,31 @@ static func collect_adjacent_rocks(board: PuzzleBoard, matched: Array) -> Array[
 				continue
 			seen[key] = true
 			out.append(n)
+	return out
+
+
+## Apply one cascade-step hit to each unique ROCK position.
+## Returns {ok: bool, hits: int, destroyed: int}.
+## Production seam used by resolve(); tests may call directly for deterministic HP steps.
+static func apply_rock_hits(board: PuzzleBoard, rocks: Array) -> Dictionary:
+	var out := {"ok": false, "hits": 0, "destroyed": 0}
+	if board == null or not board.is_valid():
+		return out
+	var hits := 0
+	var destroyed := 0
+	for item in rocks:
+		if typeof(item) != TYPE_VECTOR2I:
+			return out
+		var pos: Vector2i = item
+		var remaining := board.damage_rock(pos)
+		if remaining < 0:
+			return out
+		hits += 1
+		if remaining == 0:
+			destroyed += 1
+	out["ok"] = true
+	out["hits"] = hits
+	out["destroyed"] = destroyed
 	return out
 
 

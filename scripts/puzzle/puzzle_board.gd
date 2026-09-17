@@ -92,7 +92,7 @@ func clear_orb(pos: Vector2i) -> bool:
 	return true
 
 
-## Places ROCK and clears any orb. Fails OOB / invalid.
+## Places ROCK at HP=2 and clears any orb. Fails OOB / invalid / already ROCK.
 func set_rock(pos: Vector2i) -> bool:
 	if not in_bounds(pos):
 		return false
@@ -106,7 +106,24 @@ func clear_obstacle(pos: Vector2i) -> bool:
 	return true
 
 
-## Count of ROCK cells currently on the board.
+## ROCK HP at pos (1 or 2), or 0 if not ROCK / OOB / invalid.
+func rock_hp_at(pos: Vector2i) -> int:
+	if not in_bounds(pos):
+		return 0
+	var cell: PuzzleCell = _cells[pos.y][pos.x]
+	if not cell.is_rock():
+		return 0
+	return cell.obstacle_hp()
+
+
+## One cascade-step hit. Returns remaining HP (1 or 0), or -1 if not ROCK / OOB / invalid.
+func damage_rock(pos: Vector2i) -> int:
+	if not in_bounds(pos):
+		return -1
+	return (_cells[pos.y][pos.x] as PuzzleCell).damage_rock()
+
+
+## Count of ROCK cells currently on the board (HP1 and HP2 both count).
 func rock_count() -> int:
 	if not _valid:
 		return 0
@@ -168,6 +185,19 @@ func snapshot_obstacle_types() -> Array:
 		var row: Array = []
 		for x in range(_width):
 			row.append((_cells[y][x] as PuzzleCell).obstacle_id())
+		out.append(row)
+	return out
+
+
+## Defensive row-major snapshot: Array[Array[int]] of obstacle HP (0 if none).
+func snapshot_obstacle_hp() -> Array:
+	var out: Array = []
+	if not _valid:
+		return out
+	for y in range(_height):
+		var row: Array = []
+		for x in range(_width):
+			row.append((_cells[y][x] as PuzzleCell).obstacle_hp())
 		out.append(row)
 	return out
 

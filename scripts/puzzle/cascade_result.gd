@@ -11,6 +11,7 @@ var _guard_exceeded: bool = false
 var _step_count: int = 0
 var _cleared_per_step: Array[int] = []
 var _rocks_destroyed_per_step: Array[int] = []
+var _rock_hits_per_step: Array[int] = []
 
 
 static func invalid() -> CascadeResult:
@@ -21,13 +22,15 @@ static func invalid() -> CascadeResult:
 	result._step_count = 0
 	result._cleared_per_step.clear()
 	result._rocks_destroyed_per_step.clear()
+	result._rock_hits_per_step.clear()
 	return result
 
 
 static func guard_exceeded(
 	step_count: int,
 	cleared_per_step: Array,
-	rocks_destroyed_per_step: Array = []
+	rocks_destroyed_per_step: Array = [],
+	rock_hits_per_step: Array = []
 ) -> CascadeResult:
 	var result := CascadeResult.new()
 	result._valid = false
@@ -36,13 +39,15 @@ static func guard_exceeded(
 	result._step_count = maxi(step_count, 0)
 	result._cleared_per_step = _copy_ints(cleared_per_step)
 	result._rocks_destroyed_per_step = _copy_ints(rocks_destroyed_per_step)
+	result._rock_hits_per_step = _copy_ints(rock_hits_per_step)
 	return result
 
 
 static func stable_success(
 	step_count: int,
 	cleared_per_step: Array,
-	rocks_destroyed_per_step: Array = []
+	rocks_destroyed_per_step: Array = [],
+	rock_hits_per_step: Array = []
 ) -> CascadeResult:
 	var result := CascadeResult.new()
 	result._valid = true
@@ -51,6 +56,7 @@ static func stable_success(
 	result._step_count = maxi(step_count, 0)
 	result._cleared_per_step = _copy_ints(cleared_per_step)
 	result._rocks_destroyed_per_step = _copy_ints(rocks_destroyed_per_step)
+	result._rock_hits_per_step = _copy_ints(rock_hits_per_step)
 	return result
 
 
@@ -84,6 +90,13 @@ func total_rocks_destroyed() -> int:
 	return total
 
 
+func total_rock_hits() -> int:
+	var total := 0
+	for n in _rock_hits_per_step:
+		total += n
+	return total
+
+
 ## Defensive copy of per-step unique cleared cell counts (e.g. [6, 3, 8]).
 func cleared_cell_count_per_step_snapshot() -> Array[int]:
 	return _copy_ints(_cleared_per_step)
@@ -91,6 +104,10 @@ func cleared_cell_count_per_step_snapshot() -> Array[int]:
 
 func rocks_destroyed_per_step_snapshot() -> Array[int]:
 	return _copy_ints(_rocks_destroyed_per_step)
+
+
+func rock_hits_per_step_snapshot() -> Array[int]:
+	return _copy_ints(_rock_hits_per_step)
 
 
 static func _copy_ints(src: Array) -> Array[int]:
