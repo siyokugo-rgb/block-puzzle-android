@@ -17,7 +17,7 @@ enum State {
 const SCORE_MAX := 9223372036854775807
 
 ## Per-drag move budget (Phase R-F Gate 1 DEV value; not production final).
-const MOVE_DURATION_MS := 1500
+const MOVE_DURATION_MS := 2000
 
 var _state: State = State.INVALID
 var _board: PuzzleBoard = null

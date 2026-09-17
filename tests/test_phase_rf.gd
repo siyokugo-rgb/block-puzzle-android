@@ -178,7 +178,7 @@ func _find_matching_swap(session: PuzzleSession) -> Array:
 	return []
 
 
-func test_dual_begin_drag_sets_move_remaining_1500() -> void:
+func test_dual_begin_drag_sets_move_remaining_2000() -> void:
 	var s := PuzzleSession.create_score_attack(6, 6, 42, 60000)
 	assert_false(s.has_active_move_timer())
 	assert_eq(s.move_remaining_ms(), 0)
@@ -186,7 +186,7 @@ func test_dual_begin_drag_sets_move_remaining_1500() -> void:
 	assert_eq(s.state(), PuzzleSession.State.ROUTE_DRAG)
 	assert_true(s.has_active_move_timer())
 	assert_eq(s.move_remaining_ms(), PuzzleSession.MOVE_DURATION_MS)
-	assert_eq(s.move_remaining_ms(), 1500)
+	assert_eq(s.move_remaining_ms(), 2000)
 
 
 func test_dual_idle_session_ticks_move_inactive() -> void:
@@ -204,14 +204,17 @@ func test_dual_idle_session_ticks_move_inactive() -> void:
 func test_dual_route_drag_ticks_both_timers() -> void:
 	var s := PuzzleSession.create_score_attack(6, 6, 42, 60000)
 	assert_true(s.begin_drag(Vector2i(0, 0)))
-	assert_eq(s.move_remaining_ms(), 1500)
+	assert_eq(s.move_remaining_ms(), 2000)
 	s.advance_time(500)
 	assert_eq(s.remaining_ms(), 59500)
+	assert_eq(s.move_remaining_ms(), 1500)
+	s.advance_time(500)
+	assert_eq(s.remaining_ms(), 59000)
 	assert_eq(s.move_remaining_ms(), 1000)
 	assert_eq(s.state(), PuzzleSession.State.ROUTE_DRAG)
 
 
-func test_dual_hold_same_cell_still_decrements_move() -> void:
+func test_dual_hold_same_cell_still_decrements_and_expires() -> void:
 	var s := PuzzleSession.create_score_attack(6, 6, 42, 60000)
 	assert_true(s.begin_drag(Vector2i(0, 0)))
 	assert_eq(s.active_drag_swap_count(), 0)
@@ -219,8 +222,15 @@ func test_dual_hold_same_cell_still_decrements_move() -> void:
 	s.advance_time(500)
 	assert_eq(s.active_drag_swap_count(), 0)
 	assert_eq(s.active_drag_current_cell(), Vector2i(0, 0))
-	assert_eq(s.move_remaining_ms(), 1000)
+	assert_eq(s.move_remaining_ms(), 1500)
 	assert_eq(s.remaining_ms(), 59500)
+	# Full 2000ms hold with zero swaps → expiry without cascade.
+	s.advance_time(1500)
+	assert_eq(s.last_end_reason(), "move_expiry")
+	assert_eq(s.state(), PuzzleSession.State.IDLE)
+	assert_eq(s.score(), 0)
+	assert_false(s.has_active_drag())
+	assert_false(s.has_active_move_timer())
 
 
 func test_dual_move_expiry_with_swaps_resolves_to_idle() -> void:
@@ -256,7 +266,7 @@ func test_dual_move_expiry_zero_swaps_no_cascade() -> void:
 
 
 func test_dual_session_expiry_first_forced_final_move() -> void:
-	## Session 1000ms < Move 1500ms → Session expiry wins during drag with swaps.
+	## Session 1000ms < Move 2000ms → Session expiry wins during drag with swaps.
 	var s := PuzzleSession.create_score_attack(6, 6, 42, 1000)
 	var pair: Array = _find_matching_swap(s)
 	assert_eq(pair.size(), 2)
@@ -272,14 +282,14 @@ func test_dual_session_expiry_first_forced_final_move() -> void:
 
 
 func test_dual_simultaneous_session_and_move_expiry() -> void:
-	## Same tick hits both 0 (1500/1500) → Session expiry is final; one forced release only.
-	var s := PuzzleSession.create_score_attack(6, 6, 42, 1500)
+	## Same tick hits both 0 (2000/2000) → Session expiry is final; one forced release only.
+	var s := PuzzleSession.create_score_attack(6, 6, 42, 2000)
 	var pair: Array = _find_matching_swap(s)
 	assert_eq(pair.size(), 2)
 	assert_true(s.begin_drag(pair[0]))
 	assert_eq(s.step_drag(pair[1]), DragRoute.StepResult.SWAPPED)
 	var score_before := s.score()
-	s.advance_time(1500)
+	s.advance_time(2000)
 	assert_eq(s.remaining_ms(), 0)
 	assert_eq(s.move_remaining_ms(), 0)
 	assert_eq(s.last_end_reason(), "session_expiry")
@@ -297,12 +307,12 @@ func test_dual_resolving_pauses_both_timers() -> void:
 	assert_true(s.begin_drag(Vector2i(0, 0)))
 	s.advance_time(500)
 	assert_eq(s.remaining_ms(), 59500)
-	assert_eq(s.move_remaining_ms(), 1000)
+	assert_eq(s.move_remaining_ms(), 1500)
 	# Sync RESOLVING is not sticky; force state to assert pause contract.
 	s._state = PuzzleSession.State.RESOLVING
 	s.advance_time(2000)
 	assert_eq(s.remaining_ms(), 59500)
-	assert_eq(s._move_remaining_ms, 1000)
+	assert_eq(s._move_remaining_ms, 1500)
 	assert_eq(s.state(), PuzzleSession.State.RESOLVING)
 
 	# Normal matching release also must not consume Session during resolve.
@@ -319,16 +329,16 @@ func test_dual_resolving_pauses_both_timers() -> void:
 	assert_false(s2.has_active_move_timer())
 
 
-func test_dual_next_drag_resets_move_timer_to_1500() -> void:
+func test_dual_next_drag_resets_move_timer_to_2000() -> void:
 	var s := PuzzleSession.create_score_attack(6, 6, 42, 60000)
 	assert_true(s.begin_drag(Vector2i(0, 0)))
 	s.advance_time(500)
-	assert_eq(s.move_remaining_ms(), 1000)
+	assert_eq(s.move_remaining_ms(), 1500)
 	assert_true(s.release_drag().is_success())
 	assert_eq(s.state(), PuzzleSession.State.IDLE)
 	assert_false(s.has_active_move_timer())
 	assert_true(s.begin_drag(Vector2i(1, 0)))
-	assert_eq(s.move_remaining_ms(), 1500)
+	assert_eq(s.move_remaining_ms(), 2000)
 	assert_eq(s.last_end_reason(), "")
 
 
@@ -337,13 +347,13 @@ func test_dual_negative_and_zero_elapsed_noop() -> void:
 	assert_true(s.begin_drag(Vector2i(0, 0)))
 	s.advance_time(-5)
 	assert_eq(s.remaining_ms(), 60000)
-	assert_eq(s.move_remaining_ms(), 1500)
+	assert_eq(s.move_remaining_ms(), 2000)
 	s.advance_time(0)
 	assert_eq(s.remaining_ms(), 60000)
-	assert_eq(s.move_remaining_ms(), 1500)
+	assert_eq(s.move_remaining_ms(), 2000)
 	s.advance_time(100)
 	assert_eq(s.remaining_ms(), 59900)
-	assert_eq(s.move_remaining_ms(), 1400)
+	assert_eq(s.move_remaining_ms(), 1900)
 
 
 # --- Pre-session READY / START helpers (UI-only; no domain READY state) ---

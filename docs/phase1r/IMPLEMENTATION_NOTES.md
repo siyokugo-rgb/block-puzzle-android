@@ -335,14 +335,14 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 
 - `advance_time(elapsed_ms)` per R-E0; ticks only `IDLE`/`ROUTE_DRAG`
 - Mid-drag expiry forced release; RESOLVING is sync domain pause (no tick during resolve)
-- **R-F Dual Timer:** Session Timer + per-drag Move Timer (`MOVE_DURATION_MS = 1500` DEV)
+- **R-F Dual Timer:** Session Timer + per-drag Move Timer (`MOVE_DURATION_MS = 2000` DEV)
   - `IDLE`: Session ticks; Move inactive (`move_remaining_ms() == 0`)
   - `ROUTE_DRAG`: both deduct the same `elapsed_ms` (including same-cell hold)
   - `RESOLVING` / `SESSION_OVER` / `ERROR` / `INVALID`: both paused
   - Move expiry (`swap_count >= 1`): forced release → resolve → Score → `IDLE` if Session remains
   - Move expiry (`swap_count == 0`): cancel-equivalent → no cascade → `IDLE` if Session remains
   - Session expiry during drag wins over Move (including simultaneous 0); one forced release; final `SESSION_OVER`
-  - Next successful `begin_drag` resets Move to 1500 ms
+  - Next successful `begin_drag` resets Move to 2000 ms
   - SoT: `PuzzleSession` (`remaining_ms`, `move_remaining_ms`, expiry precedence, forced release)
 
 ### Out of R-E scope
@@ -389,15 +389,15 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 ### DEV play
 
 - Seed **42**, 6×6, 5 types, duration buttons 45000/60000/90000 ms
-- Move budget DEV **1500** ms per drag
+- Move budget DEV **2000** ms per drag (Gate 1 first evaluation: Session 60000 + Move 2000)
 - Immediate post-resolve redraw (no cascade animation)
 
 ### Status
 
-- **VERIFY FIRST / FIX FIRST** — Move 1.5s + READY START; do not merge Draft PR #16; do not start R-G / Gate 1 until device re-verify
+- **VERIFY FIRST / FIX FIRST** — Move 2.0s + READY START; do not merge Draft PR #16; do not start R-G / Gate 1 until device re-verify
 
 ### Out of R-F scope
 
 - ROCK / Save / Best Score / production art / complex animation / audio
 - R-G / Gate 1 start
-- Production-final Move duration pick (1.5s is Gate 1 DEV)
+- Production-final Move duration pick (2.0s is Gate 1 DEV candidate)

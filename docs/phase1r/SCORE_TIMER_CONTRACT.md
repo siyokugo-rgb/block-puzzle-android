@@ -168,7 +168,7 @@ UI may display seconds; domain remaining time is always ms.
 
 | Rule | Value |
 | --- | --- |
-| `MOVE_DURATION_MS` | **1500** (Gate 1 DEV value; was 3000; not production final) |
+| `MOVE_DURATION_MS` | **2000** (Gate 1 DEV candidate; was 1500 / 3000; not production final) |
 | Active | Only during `ROUTE_DRAG` (set on successful `begin_drag`) |
 | Idle display | Domain reports inactive (`move_remaining_ms() == 0`); UI may show `---` |
 | Tick | Same `elapsed_ms` deducted from Session + Move during `ROUTE_DRAG` |
@@ -177,7 +177,7 @@ UI may display seconds; domain remaining time is always ms.
 | Move → 0, swaps ≥ 1 | Forced release → resolve → Score → `IDLE` if Session > 0 |
 | Move → 0, swaps == 0 | Cancel-equivalent; no cascade; `IDLE` if Session > 0 |
 | Session → 0 during drag | Session expiry wins (even if Move also 0 same tick); one forced release |
-| Next drag | Successful `begin_drag` resets Move to 1500 |
+| Next drag | Successful `begin_drag` resets Move to 2000 |
 
 SoT remains `PuzzleSession` — UI must not independently measure the 3s budget.
 
