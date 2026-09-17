@@ -123,6 +123,52 @@ func damage_rock(pos: Vector2i) -> int:
 	return (_cells[pos.y][pos.x] as PuzzleCell).damage_rock()
 
 
+## Place ROCK with explicit HP (1 or 2). Clears any orb. Destination must be empty.
+## Does not use set_rock() — preserves HP for gravity moves (no silent HP=2 reset).
+func place_rock_with_hp(pos: Vector2i, hp: int) -> bool:
+	if not in_bounds(pos):
+		return false
+	if hp != 1 and hp != 2:
+		return false
+	var cell: PuzzleCell = _cells[pos.y][pos.x]
+	if not cell.is_empty():
+		return false
+	return cell.place_rock_with_hp(hp)
+
+
+## Move orb or ROCK from→to. Destination must be empty. Preserves ROCK HP.
+## Failure leaves board unchanged. Same-cell is a no-op success.
+func move_occupant(from: Vector2i, to: Vector2i) -> bool:
+	if not in_bounds(from) or not in_bounds(to):
+		return false
+	if from == to:
+		return true
+	var src: PuzzleCell = _cells[from.y][from.x]
+	var dst: PuzzleCell = _cells[to.y][to.x]
+	if src.is_empty():
+		return false
+	if not dst.is_empty():
+		return false
+	# Capture then clear then place (atomic for this board).
+	var had_rock := src.is_rock()
+	var hp := src.obstacle_hp()
+	var orb := src.orb_id()
+	if had_rock:
+		src.clear_obstacle()
+		if not dst.place_rock_with_hp(hp):
+			# Restore source on failure.
+			src.place_rock_with_hp(hp)
+			return false
+		return true
+	if orb < 0:
+		return false
+	src.clear_orb()
+	if not dst.set_orb(orb):
+		src.set_orb(orb)
+		return false
+	return true
+
+
 ## Count of ROCK cells currently on the board (HP1 and HP2 both count).
 func rock_count() -> int:
 	if not _valid:

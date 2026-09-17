@@ -193,7 +193,7 @@ DEV verification target: **6×6 / 5 OrbType** → no horizontal/vertical ≥3 af
 - Relative vertical order of orbs in a column is **preserved**
 - No orb duplication / loss / cross-column moves
 - Null / invalid board → `apply` returns `false`, no mutation
-- Obstacles / ROCK segment gravity: delivered in **R-G** (see Phase R-G)
+- Obstacles / falling ROCK gravity: delivered in **R-G** (see Phase R-G)
 
 ### Refill order — FIXED
 
@@ -411,8 +411,9 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 
 ### Purpose
 
-Hypothesis check for Gate 2: does impassable ROCK improve route thinking / replayability
-without becoming pure annoyance? **Not** a feature-complete obstacle framework.
+Hypothesis check for Gate 2: does a **falling** impassable ROCK (top→down gravity token)
+improve route thinking / replayability without becoming pure annoyance?
+**Not** a feature-complete obstacle framework. Not a fixed terrain wall.
 
 ### Domain
 
@@ -420,18 +421,22 @@ without becoming pure annoyance? **Not** a feature-complete obstacle framework.
   — durability is **not** a separate ObstacleType
 - `PuzzleCell`: optional orb + optional obstacle + `_obstacle_hp`; **ROCK ⇒ no orb**
 - Initial ROCK: **HP = 2** (Gate 2 DEV; not production final)
-- `PuzzleBoard`: `set_rock` / `clear_obstacle` / `rock_hp_at` / `damage_rock` /
-  `snapshot_obstacle_types` / `snapshot_obstacle_hp` / `rock_count`
+- `PuzzleBoard`: `set_rock` / `place_rock_with_hp` / `move_occupant` / `clear_obstacle` /
+  `rock_hp_at` / `damage_rock` / snapshots / `rock_count`
   — existing ROCK → `set_rock` fails (no silent HP heal)
+  — gravity moves use `place_rock_with_hp` / `move_occupant` (HP preserved; never `set_rock`)
 - Damage unit: **max 1 hit per ROCK per cascade step**
   (multi-adjacent matched cells in the same step still deal 1 damage)
 - HP is **per-cell independent** (Test A: only adjacent ROCK takes damage)
 - Cross-cascade-step damage in the same move is legal (step1 HP2→1, step2 HP1→0)
 - Cascade order: detect → unique adjacent ROCK hits → destroy only HP=0 →
-  clear matched orbs → segmented gravity → refill skips living ROCK
+  clear matched orbs → **mixed occupant gravity** → refill skips living ROCK
+- `GravityResolver`: per-column compact of Orb **and** ROCK together; top→bottom
+  relative order preserved; no overtake; downward-only; same column only
+- `GravityMoveTrace.Kind`: `ORB` | `ROCK` (orb_id or rock_hp); no upward / horizontal moves
 - Neutral `CascadeStepTrace` (matched / rock_hits / gravity_moves / refills) for UI playback
-- HP1 / HP2: both impassable, both gravity barriers, both refill-skipped
-- Score formula unchanged (no ROCK destruction bonus)
+- HP1 / HP2: both impassable, both gravity-affected falling tokens, both refill-skipped
+- Score formula unchanged (no ROCK hit / break bonus)
 
 ### ROCK respawn (Gate 2 DEV)
 
@@ -440,19 +445,22 @@ without becoming pure annoyance? **Not** a feature-complete obstacle framework.
 - Next valid move (`swap_count >= 1`, stable resolve, not SESSION_OVER/ERROR): spawn **at most 1**
 - Obstacle RNG: `obstacle_seed = session_seed XOR 0x524F434B` (`OBSTACLE_RNG_SEED_XOR`)
   — independent of `OrbGenerator` stream
-- Candidate: has orb, no obstacle; replace with ROCK HP=2; no cascade after spawn
-- No eligible cell → keep pending, no ERROR
+- Candidate: **top row only** (`y == 0`), no obstacle (orb may be present);
+  replace with ROCK HP=2; mid-board spawn forbidden
+- No eligible top cell → keep pending, no ERROR; retry next valid move
 
 ### Presentation
 
-- `ResolutionPresenter` plays domain traces only (match → rock hit → gravity → refill → respawn)
+- `ResolutionPresenter` plays domain traces only
+  (match → rock hit → clear → gravity Orb+ROCK downward → refill from above → respawn drop)
+- Gravity / refill / respawn visuals are **top → down only** (no horizontal / upward)
 - `presentation_busy` blocks input/timers; not a gameplay SoT
 
 ### DEV A/B
 
 - READY: Obstacle **OFF** | **ROCK** (default ROCK); selection only until START
-- ROCK layout (fixed, not production): `(1,2)`, `(3,3)`, `(4,1)` after match-stable fill
-  — all start at HP=2
+- ROCK layout (fixed Gate 2 DEV, not production): top row `(1,0)`, `(3,0)`, `(4,0)`
+  after match-stable fill — all start at HP=2
 - Same seed 42 / Session 60s / Move 2.0s / 6×6 / 5 OrbTypes
 - HUD: `ROCK: N` remaining count; cells draw gray + `"R2"` / `"R1"`
 
@@ -468,7 +476,7 @@ Hypothesis only — do **not** add `ObstacleType.SLIME` / GDScript / tests in R-
 
 ### Status
 
-- **VERIFY FIRST** after HP2 change + APK; **Gate 2 NOT STARTED**
+- **FIX FIRST** → **VERIFY FIRST** after falling-ROCK APK; **Gate 2 NOT STARTED**
 - Do **not** merge R-G to main until Gate 2 human comparison
 - Do **not** start LOCK / SLIME / Rescue
 

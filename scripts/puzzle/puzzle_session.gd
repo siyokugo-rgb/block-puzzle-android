@@ -25,11 +25,12 @@ enum ObstacleMode {
 	ROCK,
 }
 
-## Fixed DEV ROCK positions for Gate 2 A/B (not production layout).
+## Fixed DEV ROCK positions — top row only (falling-token Gate 2 DEV).
+## Columns x=1,3,4 at y=0. Not production layout.
 const DEV_ROCK_LAYOUT: Array[Vector2i] = [
-	Vector2i(1, 2),
-	Vector2i(3, 3),
-	Vector2i(4, 1),
+	Vector2i(1, 0),
+	Vector2i(3, 0),
+	Vector2i(4, 0),
 ]
 
 ## Gate 2 DEV target live ROCK count (respawn toward this).
@@ -498,7 +499,8 @@ func _apply_rock_respawn_after_resolve(destroyed_this_move: int) -> Array:
 	return spawns
 
 
-## Pick one eligible orb cell via obstacle RNG; replace with ROCK HP=2. Null if none.
+## Pick one top-row eligible cell via obstacle RNG; place R2. Null if none.
+## Mid-board spawn is forbidden — only y == 0.
 func _try_spawn_one_rock() -> RockSpawnTrace:
 	if _board == null or not _board.is_valid():
 		return null
@@ -507,18 +509,21 @@ func _try_spawn_one_rock() -> RockSpawnTrace:
 	if rock_count() >= TARGET_ROCK_COUNT:
 		return null
 	var candidates: Array[Vector2i] = []
-	for y in range(_board.height()):
-		for x in range(_board.width()):
-			var pos := Vector2i(x, y)
-			if _board.has_obstacle(pos):
-				continue
-			if not _board.has_orb(pos):
-				continue
-			candidates.append(pos)
+	var y := 0
+	for x in range(_board.width()):
+		var pos := Vector2i(x, y)
+		if _board.has_obstacle(pos):
+			continue
+		# Orb may be present — spawn replaces it with ROCK HP=2.
+		candidates.append(pos)
 	if candidates.is_empty():
 		return null
 	var idx := _obstacle_rng.randi_range(0, candidates.size() - 1)
 	var chosen: Vector2i = candidates[idx]
+	# Clear orb if present, then place fresh R2.
+	if _board.has_orb(chosen):
+		if not _board.clear_orb(chosen):
+			return null
 	if not _board.set_rock(chosen):
 		return null
 	return RockSpawnTrace.create(chosen, PuzzleCell.ROCK_INITIAL_HP)

@@ -102,6 +102,19 @@ func set_rock() -> bool:
 	return set_obstacle(ObstacleType.Id.ROCK)
 
 
+## Place ROCK with explicit HP on an empty cell (gravity / internal moves).
+## Clears orb if somehow present. Does not reset via set_rock().
+func place_rock_with_hp(hp: int) -> bool:
+	if hp != 1 and hp != 2:
+		return false
+	if is_rock():
+		return false
+	_orb_id = -1
+	_obstacle_id = ObstacleType.Id.ROCK
+	_obstacle_hp = hp
+	return true
+
+
 ## Apply one cascade-step hit. Returns remaining HP after hit (1 or 0), or -1 if not ROCK.
 ## HP2 → 1 (still ROCK). HP1 → 0 and clears obstacle.
 func damage_rock() -> int:

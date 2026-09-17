@@ -20,7 +20,7 @@ const ROCK_HIT_MS := 130.0
 const GRAVITY_MS := 200.0
 const REFILL_MS := 180.0
 const RESPAWN_WARN_MS := 150.0
-const RESPAWN_SHOW_MS := 150.0
+const RESPAWN_SHOW_MS := 200.0
 
 var busy: bool = false
 var phase: Phase = Phase.IDLE
@@ -152,8 +152,31 @@ func refill_alpha(pos: Vector2i) -> float:
 	for item in refill_cells:
 		var rf: RefillTrace = item
 		if rf.pos() == pos:
-			return refill_progress
+			return maxf(0.35, refill_progress)
 	return 1.0
+
+
+## Presentation-only: drop from above board into target cell (0=above, 1=settled).
+func refill_draw_offset(pos: Vector2i, cell_size: float) -> Vector2:
+	if phase != Phase.REFILL:
+		return Vector2.ZERO
+	for item in refill_cells:
+		var rf: RefillTrace = item
+		if rf.pos() == pos:
+			var travel := -cell_size * (1.0 + float(pos.y)) * (1.0 - refill_progress)
+			return Vector2(0.0, travel)
+	return Vector2.ZERO
+
+
+func spawn_draw_offset(pos: Vector2i, cell_size: float) -> Vector2:
+	if phase != Phase.RESPAWN_SHOW and phase != Phase.RESPAWN_WARN:
+		return Vector2.ZERO
+	if pos not in spawn_cells:
+		return Vector2.ZERO
+	if phase == Phase.RESPAWN_WARN:
+		return Vector2(0.0, -cell_size * 1.5)
+	var t := clampf(phase_elapsed_ms / RESPAWN_SHOW_MS, 0.0, 1.0)
+	return Vector2(0.0, -cell_size * 1.5 * (1.0 - t))
 
 
 func _begin_step_match() -> void:
@@ -209,15 +232,21 @@ func _begin_gravity() -> void:
 
 
 func _commit_gravity_to_vis() -> void:
-	# Apply in reverse-safe order: clear sources then set destinations.
+	# Clear sources first, then place destinations (Orb + ROCK).
 	var pending: Array = []
 	for item in gravity_moves:
 		var mv: GravityMoveTrace = item
 		pending.append(mv)
-		_set_orb(mv.from_cell(), -1)
+		if mv.is_rock():
+			_set_obs(mv.from_cell(), ObstacleType.Id.NONE, 0)
+		else:
+			_set_orb(mv.from_cell(), -1)
 	for item in pending:
 		var mv2: GravityMoveTrace = item
-		_set_orb(mv2.to_cell(), mv2.orb_id())
+		if mv2.is_rock():
+			_set_obs(mv2.to_cell(), ObstacleType.Id.ROCK, mv2.rock_hp())
+		else:
+			_set_orb(mv2.to_cell(), mv2.orb_id())
 	gravity_progress = 1.0
 
 

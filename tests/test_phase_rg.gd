@@ -188,29 +188,26 @@ func test_same_step_multi_adjacency_damages_once_not_destroy() -> void:
 	assert_eq(board.rock_hp_at(Vector2i(0, 2)), 1)
 
 
-func test_first_hit_cascade_keeps_rock_as_barrier() -> void:
+func test_first_hit_then_rock_falls_preserving_hp1() -> void:
 	var board := _board(3, 3)
 	_place_orb(board, 0, 0, OrbType.Id.ORB_0)
 	_place_orb(board, 1, 0, OrbType.Id.ORB_0)
 	_place_orb(board, 2, 0, OrbType.Id.ORB_0)
 	assert_true(board.set_rock(Vector2i(1, 1)))
 	_place_orb(board, 0, 2, OrbType.Id.ORB_1)
-	# Single-step seam: detect → hit → clear; HP1 rock remains gravity barrier.
 	var matched := MatchResolver.detect(board).matched_cells_snapshot()
 	var rocks := CascadeResolver.collect_adjacent_rocks(board, matched)
 	assert_eq(rocks.size(), 1)
 	var stats := CascadeResolver.apply_rock_hits(board, rocks)
 	assert_eq(stats["hits"], 1)
 	assert_eq(stats["destroyed"], 0)
-	assert_true(board.is_rock(Vector2i(1, 1)))
 	assert_eq(board.rock_hp_at(Vector2i(1, 1)), 1)
 	assert_true(MatchResolver.clear_current_matches(board).has_matches())
-	assert_true(board.set_orb(Vector2i(1, 0), OrbType.Id.ORB_4))
+	# After clear, column 1 has only R1 at y=1 → falls to bottom as R1.
 	assert_true(GravityResolver.apply(board))
-	# Column segment above HP1 ROCK is only y=0 → orb stays; rock not crossed.
-	assert_eq(board.orb_at(Vector2i(1, 0)), OrbType.Id.ORB_4)
-	assert_true(board.is_rock(Vector2i(1, 1)))
-	assert_eq(board.orb_at(Vector2i(1, 1)), -1)
+	assert_false(board.is_rock(Vector2i(1, 1)))
+	assert_true(board.is_rock(Vector2i(1, 2)))
+	assert_eq(board.rock_hp_at(Vector2i(1, 2)), 1)
 
 
 func test_second_hit_destroys_via_apply_rock_hits_seam() -> void:
@@ -268,30 +265,158 @@ func test_cross_cascade_step_two_hits_destroy() -> void:
 	assert_eq(board.rock_count(), 0)
 
 
-# --- H. Gravity HP2 / HP1 / destroyed ---
+# --- H. Mixed Gravity (falling ROCK) ---
 
 
-func test_gravity_segments_for_hp2_and_hp1() -> void:
-	var board := _board(1, 5)
+func test_mixed_gravity_preserves_order_and_hp() -> void:
+	var board := _board(1, 6)
 	_place_orb(board, 0, 0, OrbType.Id.ORB_0)
 	assert_true(board.set_rock(Vector2i(0, 2)))
+	assert_eq(board.damage_rock(Vector2i(0, 2)), 1) # R1
 	_place_orb(board, 0, 3, OrbType.Id.ORB_1)
-	assert_true(GravityResolver.apply(board))
-	assert_eq(board.orb_at(Vector2i(0, 1)), OrbType.Id.ORB_0)
-	assert_eq(board.orb_at(Vector2i(0, 0)), -1)
-	assert_eq(board.rock_hp_at(Vector2i(0, 2)), 2)
+	_place_orb(board, 0, 5, OrbType.Id.ORB_2)
+	var traced := GravityResolver.apply_traced(board)
+	assert_true(traced["ok"])
+	# Occupants A, R1, B, C → bottom compact order preserved.
+	assert_eq(board.orb_at(Vector2i(0, 2)), OrbType.Id.ORB_0)
+	assert_true(board.is_rock(Vector2i(0, 3)))
+	assert_eq(board.rock_hp_at(Vector2i(0, 3)), 1)
 	assert_eq(board.orb_at(Vector2i(0, 4)), OrbType.Id.ORB_1)
-	# HP1 still barrier.
-	assert_eq(board.damage_rock(Vector2i(0, 2)), 1)
-	_place_orb(board, 0, 0, OrbType.Id.ORB_4)
-	assert_true(board.clear_orb(Vector2i(0, 1)))
+	assert_eq(board.orb_at(Vector2i(0, 5)), OrbType.Id.ORB_2)
+	for item in traced["moves"]:
+		var mv: GravityMoveTrace = item
+		assert_eq(mv.from_cell().x, mv.to_cell().x)
+		assert_gt(mv.to_cell().y, mv.from_cell().y)
+
+
+func test_rock_only_falls_preserving_r2() -> void:
+	var board := _board(1, 4)
+	assert_true(board.set_rock(Vector2i(0, 0)))
 	assert_true(GravityResolver.apply(board))
-	assert_eq(board.orb_at(Vector2i(0, 1)), OrbType.Id.ORB_4)
+	assert_true(board.is_rock(Vector2i(0, 3)))
+	assert_eq(board.rock_hp_at(Vector2i(0, 3)), 2)
+	assert_false(board.is_rock(Vector2i(0, 0)))
+
+
+func test_multiple_rocks_relative_order() -> void:
+	var board := _board(1, 6)
+	_place_orb(board, 0, 0, OrbType.Id.ORB_0)
+	assert_true(board.set_rock(Vector2i(0, 1))) # R2
+	_place_orb(board, 0, 3, OrbType.Id.ORB_1)
+	assert_true(board.set_rock(Vector2i(0, 4)))
+	assert_eq(board.damage_rock(Vector2i(0, 4)), 1) # R1
+	assert_true(GravityResolver.apply(board))
+	assert_eq(board.orb_at(Vector2i(0, 2)), OrbType.Id.ORB_0)
+	assert_eq(board.rock_hp_at(Vector2i(0, 3)), 2)
+	assert_eq(board.orb_at(Vector2i(0, 4)), OrbType.Id.ORB_1)
+	assert_eq(board.rock_hp_at(Vector2i(0, 5)), 1)
+
+
+func test_move_occupant_preserves_rock_hp() -> void:
+	var board := _board(1, 3)
+	assert_true(board.set_rock(Vector2i(0, 0)))
+	assert_eq(board.damage_rock(Vector2i(0, 0)), 1)
+	assert_true(board.move_occupant(Vector2i(0, 0), Vector2i(0, 2)))
+	assert_false(board.is_rock(Vector2i(0, 0)))
+	assert_eq(board.rock_hp_at(Vector2i(0, 2)), 1)
+	assert_true(board.is_empty(Vector2i(0, 1)))
+	assert_true(board.move_occupant(Vector2i(0, 2), Vector2i(0, 1)))
+	assert_eq(board.rock_hp_at(Vector2i(0, 1)), 1)
+	# Same-cell is a no-op success.
+	assert_true(board.move_occupant(Vector2i(0, 1), Vector2i(0, 1)))
+	assert_eq(board.rock_hp_at(Vector2i(0, 1)), 1)
+	# Non-empty dest fails; source unchanged.
+	_place_orb(board, 0, 2, OrbType.Id.ORB_0)
+	assert_false(board.move_occupant(Vector2i(0, 1), Vector2i(0, 2)))
+	assert_eq(board.rock_hp_at(Vector2i(0, 1)), 1)
+	assert_eq(board.orb_at(Vector2i(0, 2)), OrbType.Id.ORB_0)
+	# OOB fails.
+	assert_false(board.move_occupant(Vector2i(0, 1), Vector2i(0, 9)))
+	assert_eq(board.rock_hp_at(Vector2i(0, 1)), 1)
+
+
+func test_orb_only_column_compacts_like_classic() -> void:
+	var board := _board(1, 5)
+	_place_orb(board, 0, 0, OrbType.Id.ORB_0)
+	_place_orb(board, 0, 2, OrbType.Id.ORB_1)
+	_place_orb(board, 0, 4, OrbType.Id.ORB_2)
+	var traced := GravityResolver.apply_traced(board)
+	assert_true(traced["ok"])
+	assert_eq(board.orb_at(Vector2i(0, 0)), -1)
+	assert_eq(board.orb_at(Vector2i(0, 1)), -1)
+	assert_eq(board.orb_at(Vector2i(0, 2)), OrbType.Id.ORB_0)
+	assert_eq(board.orb_at(Vector2i(0, 3)), OrbType.Id.ORB_1)
+	assert_eq(board.orb_at(Vector2i(0, 4)), OrbType.Id.ORB_2)
+	for item in traced["moves"]:
+		var mv: GravityMoveTrace = item
+		assert_true(mv.is_orb())
+		assert_eq(mv.from_cell().x, mv.to_cell().x)
+		assert_gt(mv.to_cell().y, mv.from_cell().y)
+
+
+func test_orb_cannot_overtake_rock() -> void:
+	var board := _board(1, 4)
+	_place_orb(board, 0, 0, OrbType.Id.ORB_3)
+	assert_true(board.set_rock(Vector2i(0, 2)))
+	assert_true(GravityResolver.apply(board))
+	# A above R → after compact: A at y=2, R at y=3 (orb stays above rock).
+	assert_eq(board.orb_at(Vector2i(0, 2)), OrbType.Id.ORB_3)
+	assert_true(board.is_rock(Vector2i(0, 3)))
+	assert_eq(board.orb_at(Vector2i(0, 3)), -1)
+
+
+func test_rock_cannot_overtake_orb() -> void:
+	var board := _board(1, 4)
+	assert_true(board.set_rock(Vector2i(0, 0)))
+	_place_orb(board, 0, 2, OrbType.Id.ORB_4)
+	assert_true(GravityResolver.apply(board))
+	# R above B → after compact: R at y=2, B at y=3.
 	assert_true(board.is_rock(Vector2i(0, 2)))
-	assert_eq(board.orb_at(Vector2i(0, 2)), -1)
+	assert_eq(board.orb_at(Vector2i(0, 3)), OrbType.Id.ORB_4)
 
 
-func test_gravity_after_rock_destroyed_allows_pass() -> void:
+func test_gravity_move_trace_kinds() -> void:
+	var board := _board(1, 5)
+	_place_orb(board, 0, 0, OrbType.Id.ORB_1)
+	assert_true(board.set_rock(Vector2i(0, 1)))
+	assert_eq(board.damage_rock(Vector2i(0, 1)), 1) # R1
+	var traced := GravityResolver.apply_traced(board)
+	assert_true(traced["ok"])
+	var moves: Array = traced["moves"]
+	assert_eq(moves.size(), 2)
+	var orb_mv: GravityMoveTrace = moves[0]
+	var rock_mv: GravityMoveTrace = moves[1]
+	assert_true(orb_mv.is_orb())
+	assert_eq(orb_mv.orb_id(), OrbType.Id.ORB_1)
+	assert_eq(orb_mv.from_cell(), Vector2i(0, 0))
+	assert_eq(orb_mv.to_cell(), Vector2i(0, 3))
+	assert_true(rock_mv.is_rock())
+	assert_eq(rock_mv.rock_hp(), 1)
+	assert_eq(rock_mv.from_cell(), Vector2i(0, 1))
+	assert_eq(rock_mv.to_cell(), Vector2i(0, 4))
+	# Defensive duplicate.
+	var dup := rock_mv.duplicate_trace()
+	dup._rock_hp = 2
+	assert_eq(rock_mv.rock_hp(), 1)
+	for item in moves:
+		var mv: GravityMoveTrace = item
+		assert_eq(mv.from_cell().x, mv.to_cell().x)
+		assert_gt(mv.to_cell().y, mv.from_cell().y)
+
+
+func test_r1_destroy_excluded_from_gravity() -> void:
+	var board := _board(1, 3)
+	assert_true(board.set_rock(Vector2i(0, 0)))
+	assert_eq(board.damage_rock(Vector2i(0, 0)), 1)
+	assert_eq(board.damage_rock(Vector2i(0, 0)), 0)
+	assert_true(board.is_empty(Vector2i(0, 0)))
+	var traced := GravityResolver.apply_traced(board)
+	assert_true(traced["ok"])
+	assert_eq(traced["moves"].size(), 0)
+	assert_false(board.is_rock(Vector2i(0, 2)))
+
+
+func test_gravity_after_rock_destroyed_allows_orb_pass() -> void:
 	var board := _board(1, 4)
 	_place_orb(board, 0, 0, OrbType.Id.ORB_4)
 	assert_true(board.set_rock(Vector2i(0, 1)))
@@ -474,11 +599,13 @@ func test_cascade_step_trace_rock_hit_and_defensive() -> void:
 	# Mutating snapshot arrays/objects must not alter stored result.
 	hits.clear()
 	assert_eq(result.steps_snapshot()[0].rock_hits_snapshot().size(), 1)
-	# Gravity moves must not cross the surviving ROCK.
+	# Gravity moves: downward same-column only (Orb and/or ROCK).
 	for item in step0.gravity_moves_snapshot():
 		var mv: GravityMoveTrace = item
-		assert_ne(mv.to_cell(), Vector2i(1, 1))
-		assert_false(mv.from_cell().x == 1 and mv.from_cell().y < 1 and mv.to_cell().y > 1)
+		assert_eq(mv.from_cell().x, mv.to_cell().x)
+		assert_gt(mv.to_cell().y, mv.from_cell().y)
+		if mv.is_rock():
+			assert_true(mv.rock_hp() == 1 or mv.rock_hp() == 2)
 
 
 func test_trace_refill_matches_domain_generation() -> void:
@@ -505,14 +632,6 @@ func test_trace_refill_matches_domain_generation() -> void:
 # --- Respawn ---
 
 
-func _force_destroy_one_dev_rock(session: PuzzleSession) -> void:
-	# Directly damage layout[0] twice via board API (session private board access via public damage path).
-	# Use adjacent match fixture on a custom board session is harder; damage through public board seam:
-	# Session does not expose damage — use create + resolve with handcrafted board via CascadeResolver
-	# For session-level respawn tests we manipulate via repeated apply on a cloned approach:
-	pass
-
-
 func test_respawn_grace_and_one_per_move() -> void:
 	var session := PuzzleSession.create_score_attack(
 		6, 6, 42, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
@@ -520,36 +639,11 @@ func test_respawn_grace_and_one_per_move() -> void:
 	assert_true(session.is_valid())
 	assert_eq(session.rock_count(), 3)
 	assert_eq(session.pending_rock_respawns(), 0)
-	# Destroy one DEV rock by damaging through a temporary board isn't available.
-	# Use internal helper path: call _apply_rock_respawn with destroyed counts via reflection-safe public:
-	# Simulate by calling session methods that exist — damage rocks using board_snapshot positions
-	# and PuzzleBoard via creating parallel board is insufficient.
-	# Expose: use CascadeResolver on session is private. So use:
-	# begin_drag/release with crafted... too hard.
-	# Call protected via duplicate approach — add test-only access by using destroy through
-	# rock_hp and manually invoking _apply via destroying with set/clear:
-	# We'll use apply_rock_hits on a board, then for session use:
-	var board := PuzzleBoard.create(6, 6)
-	# Instead: use session's rock positions and damage via a package — PuzzleSession needs
-	# a test seam. Use `_apply_rock_respawn_after_resolve` through destroying rocks by
-	# clearing and counting — actually call the private method... GDScript allows if we cast.
-	# Simplest seam already: destroy rocks with board.set/clear isn't on session.
-	# Add public test helper? Spec says no force_second_hit flag. Using pending via
-	# simulating resolve path:
 	assert_true(session.begin_drag(Vector2i(0, 0)))
-	# zero-swap release must not arm respawn
 	var zero := session.release_drag()
 	assert_true(zero.is_success())
 	assert_eq(session.pending_rock_respawns(), 0)
 	assert_false(session.respawn_armed())
-	# Manually queue pending as if 1 rock destroyed, without spawn (first resolve after arm false)
-	session._pending_rock_respawns = 1
-	session._respawn_armed = false
-	# Simulate end of destroy move: arm only
-	session._respawn_armed = session._pending_rock_respawns > 0
-	assert_true(session.respawn_armed())
-	assert_eq(session.rock_count(), 3)
-	# Destroy one rock on board to create deficit: clear one DEV rock
 	assert_true(session._board.clear_obstacle(PuzzleSession.DEV_ROCK_LAYOUT[0]))
 	assert_eq(session.rock_count(), 2)
 	session._pending_rock_respawns = 1
@@ -558,10 +652,31 @@ func test_respawn_grace_and_one_per_move() -> void:
 	assert_eq(spawns.size(), 1)
 	var sp: RockSpawnTrace = spawns[0]
 	assert_eq(sp.hp(), 2)
+	assert_eq(sp.pos().y, 0)
 	assert_true(session.is_rock_at(sp.pos()))
 	assert_eq(session.rock_hp_at(sp.pos()), 2)
 	assert_eq(session.rock_count(), 3)
 	assert_eq(session.pending_rock_respawns(), 0)
+
+
+func test_respawn_top_row_only_never_mid_board() -> void:
+	var session := PuzzleSession.create_score_attack(
+		6, 6, 55, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
+	)
+	assert_true(session._board.clear_obstacle(PuzzleSession.DEV_ROCK_LAYOUT[0]))
+	assert_true(session._board.clear_obstacle(PuzzleSession.DEV_ROCK_LAYOUT[1]))
+	session._pending_rock_respawns = 2
+	session._respawn_armed = true
+	for _i in range(2):
+		var spawns: Array = session._apply_rock_respawn_after_resolve(0)
+		assert_eq(spawns.size(), 1)
+		var sp: RockSpawnTrace = spawns[0]
+		assert_eq(sp.pos().y, 0)
+		assert_eq(sp.hp(), 2)
+	assert_eq(session.rock_count(), 3)
+	session._pending_rock_respawns = 1
+	session._respawn_armed = true
+	assert_eq(session._apply_rock_respawn_after_resolve(0).size(), 0)
 
 
 func test_respawn_two_destroys_refill_one_per_move() -> void:
@@ -576,16 +691,18 @@ func test_respawn_two_destroys_refill_one_per_move() -> void:
 	session._respawn_armed = true
 	var s1: Array = session._apply_rock_respawn_after_resolve(0)
 	assert_eq(s1.size(), 1)
+	assert_eq((s1[0] as RockSpawnTrace).pos().y, 0)
 	assert_eq(session.rock_count(), 2)
 	assert_eq(session.pending_rock_respawns(), 1)
 	assert_true(session.respawn_armed())
 	var s2: Array = session._apply_rock_respawn_after_resolve(0)
 	assert_eq(s2.size(), 1)
+	assert_eq((s2[0] as RockSpawnTrace).pos().y, 0)
 	assert_eq(session.rock_count(), 3)
 	assert_eq(session.pending_rock_respawns(), 0)
 
 
-func test_respawn_off_and_session_over_and_no_candidate() -> void:
+func test_respawn_off_and_no_candidate() -> void:
 	var off := PuzzleSession.create_score_attack(
 		6, 6, 42, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.OFF
 	)
@@ -596,20 +713,29 @@ func test_respawn_off_and_session_over_and_no_candidate() -> void:
 	var session := PuzzleSession.create_score_attack(
 		6, 6, 7, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
 	)
-	# Create deficit without orb candidates: remove one rock, clear all orbs.
-	assert_true(session._board.clear_obstacle(PuzzleSession.DEV_ROCK_LAYOUT[0]))
-	for y in range(6):
-		for x in range(6):
-			var p := Vector2i(x, y)
+	for x in range(6):
+		var p := Vector2i(x, 0)
+		if not session._board.is_rock(p):
 			if session._board.has_orb(p):
 				session._board.clear_orb(p)
-	assert_eq(session.rock_count(), 2)
-	session._pending_rock_respawns = 1
-	session._respawn_armed = true
-	var none: Array = session._apply_rock_respawn_after_resolve(0)
-	assert_eq(none.size(), 0)
-	assert_eq(session.pending_rock_respawns(), 1) # held
+			assert_true(session._board.set_rock(p))
+	assert_eq(session._try_spawn_one_rock(), null)
 	assert_eq(session.state(), PuzzleSession.State.IDLE)
+
+
+func test_same_seed_same_spawn_column() -> void:
+	var columns: Array = []
+	for _i in range(2):
+		var session := PuzzleSession.create_score_attack(
+			6, 6, 42, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
+		)
+		assert_true(session._board.clear_obstacle(PuzzleSession.DEV_ROCK_LAYOUT[0]))
+		session._pending_rock_respawns = 1
+		session._respawn_armed = true
+		var spawns: Array = session._apply_rock_respawn_after_resolve(0)
+		assert_eq(spawns.size(), 1)
+		columns.append((spawns[0] as RockSpawnTrace).pos().x)
+	assert_eq(columns[0], columns[1])
 
 
 func test_obstacle_rng_independent_of_orb_stream() -> void:
@@ -623,15 +749,12 @@ func test_obstacle_rng_independent_of_orb_stream() -> void:
 	var b := PuzzleSession.create_score_attack(
 		6, 6, 42, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
 	)
-	# Same seed → same initial orb board.
 	assert_eq(a.board_snapshot(), b.board_snapshot())
-	# Consume obstacle RNG on a; orb refill sequence on b must still match a before obstacle use.
 	a._pending_rock_respawns = 1
 	a._respawn_armed = true
 	assert_true(a._board.clear_obstacle(PuzzleSession.DEV_ROCK_LAYOUT[0]))
 	var sp := a._apply_rock_respawn_after_resolve(0)
 	assert_eq(sp.size(), 1)
-	# Fresh sessions same seed still share orb fill identity.
 	var c := PuzzleSession.create_score_attack(
 		6, 6, 42, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
 	)
@@ -647,3 +770,134 @@ func test_session_over_skips_spawn() -> void:
 	session.advance_time(2000)
 	assert_eq(session.state(), PuzzleSession.State.SESSION_OVER)
 	assert_true(session.rock_count() <= PuzzleSession.TARGET_ROCK_COUNT)
+
+
+# --- Presenter ---
+
+
+func test_presenter_gravity_rock_hp_and_downward_offsets() -> void:
+	var mboard := _board(3, 3)
+	_place_orb(mboard, 0, 0, OrbType.Id.ORB_0)
+	_place_orb(mboard, 1, 0, OrbType.Id.ORB_0)
+	_place_orb(mboard, 2, 0, OrbType.Id.ORB_0)
+	assert_true(mboard.set_rock(Vector2i(1, 1)))
+	_place_orb(mboard, 0, 1, OrbType.Id.ORB_2)
+	_place_orb(mboard, 2, 1, OrbType.Id.ORB_3)
+	_place_orb(mboard, 0, 2, OrbType.Id.ORB_4)
+	# (1,2) empty so R1 can fall after match clear
+	_place_orb(mboard, 2, 2, OrbType.Id.ORB_2)
+	var before_orbs := mboard.snapshot_orb_ids()
+	var before_obs := mboard.snapshot_obstacle_types()
+	var before_hp := mboard.snapshot_obstacle_hp()
+	var gen := OrbGenerator.create()
+	gen.set_seed(21)
+	var result := CascadeResolver.resolve(mboard, gen)
+	assert_true(result.is_stable())
+	var steps := result.steps_snapshot()
+	assert_true(steps.size() >= 1)
+	var step0: CascadeStepTrace = steps[0]
+	var saw_rock := false
+	for item in step0.gravity_moves_snapshot():
+		var mv: GravityMoveTrace = item
+		assert_eq(mv.from_cell().x, mv.to_cell().x)
+		assert_gt(mv.to_cell().y, mv.from_cell().y)
+		if mv.is_rock():
+			saw_rock = true
+			assert_eq(mv.rock_hp(), 1)
+			assert_eq(mv.from_cell(), Vector2i(1, 1))
+			assert_eq(mv.to_cell(), Vector2i(1, 2))
+	assert_true(saw_rock)
+	var move := SessionMoveResult.resolved(
+		steps.size(),
+		[],
+		0,
+		0,
+		false,
+		before_orbs,
+		before_obs,
+		before_hp,
+		steps,
+		[]
+	)
+	var presenter := ResolutionPresenter.new()
+	presenter.begin(move)
+	presenter.advance(ResolutionPresenter.MATCH_MS)
+	presenter.advance(ResolutionPresenter.ROCK_HIT_MS)
+	assert_eq(presenter.phase, ResolutionPresenter.Phase.GRAVITY)
+	presenter.advance(ResolutionPresenter.GRAVITY_MS * 0.5)
+	var cell_size := 40.0
+	var any_down := false
+	for item in presenter.gravity_moves:
+		var mv2: GravityMoveTrace = item
+		var off := presenter.gravity_draw_offset(mv2.from_cell(), cell_size)
+		assert_eq(off.x, 0.0)
+		assert_gt(off.y, 0.0)
+		any_down = true
+	assert_true(any_down)
+	presenter.advance(ResolutionPresenter.GRAVITY_MS)
+	assert_eq(presenter.phase, ResolutionPresenter.Phase.REFILL)
+	if not presenter.refill_cells.is_empty():
+		var rf: RefillTrace = presenter.refill_cells[0]
+		var roff := presenter.refill_draw_offset(rf.pos(), cell_size)
+		assert_eq(roff.x, 0.0)
+		assert_lt(roff.y, 0.0)
+	for _i in range(40):
+		if not presenter.is_busy():
+			break
+		presenter.advance(50.0)
+	assert_false(presenter.is_busy())
+	assert_eq(presenter.vis_orbs, mboard.snapshot_orb_ids())
+	assert_eq(presenter.vis_obstacles, mboard.snapshot_obstacle_types())
+	assert_eq(presenter.vis_hp, mboard.snapshot_obstacle_hp())
+
+
+func test_presenter_respawn_drop_from_above() -> void:
+	var session := PuzzleSession.create_score_attack(
+		6, 6, 42, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
+	)
+	assert_true(session._board.clear_obstacle(PuzzleSession.DEV_ROCK_LAYOUT[0]))
+	session._pending_rock_respawns = 1
+	session._respawn_armed = true
+	var spawns: Array = session._apply_rock_respawn_after_resolve(0)
+	assert_eq(spawns.size(), 1)
+	var sp: RockSpawnTrace = spawns[0]
+	assert_eq(sp.pos().y, 0)
+	var before_orbs: Array = session.board_snapshot()
+	var before_obs: Array = session.obstacle_snapshot()
+	var before_hp: Array = session._board.snapshot_obstacle_hp()
+	# Simulate pre-spawn presentation baseline: clear the spawned rock from "before".
+	before_obs[sp.pos().y][sp.pos().x] = ObstacleType.Id.NONE
+	before_hp[sp.pos().y][sp.pos().x] = 0
+	var move := SessionMoveResult.resolved(
+		0, [], 0, 0, false,
+		before_orbs, before_obs, before_hp,
+		[], spawns
+	)
+	var presenter := ResolutionPresenter.new()
+	presenter.begin(move)
+	assert_eq(presenter.phase, ResolutionPresenter.Phase.RESPAWN_WARN)
+	var cell_size := 40.0
+	var warn_off := presenter.spawn_draw_offset(sp.pos(), cell_size)
+	assert_eq(warn_off.x, 0.0)
+	assert_lt(warn_off.y, 0.0)
+	presenter.advance(ResolutionPresenter.RESPAWN_WARN_MS)
+	assert_eq(presenter.phase, ResolutionPresenter.Phase.RESPAWN_SHOW)
+	presenter.advance(ResolutionPresenter.RESPAWN_SHOW_MS * 0.5)
+	var mid := presenter.spawn_draw_offset(sp.pos(), cell_size)
+	assert_eq(mid.x, 0.0)
+	assert_lt(mid.y, 0.0)
+	presenter.advance(ResolutionPresenter.RESPAWN_SHOW_MS)
+	assert_false(presenter.is_busy())
+	assert_true(presenter.is_rock(sp.pos()))
+	assert_eq(presenter.rock_hp_at(sp.pos()), 2)
+
+
+func test_presenter_off_has_no_rock_animation() -> void:
+	var off := PuzzleSession.create_score_attack(
+		6, 6, 42, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.OFF
+	)
+	assert_eq(off.rock_count(), 0)
+	assert_true(off.begin_drag(Vector2i(0, 0)))
+	var released := off.release_drag()
+	assert_true(released.is_success())
+	assert_eq(released.rock_spawns_snapshot().size(), 0)

@@ -602,7 +602,13 @@ func _draw() -> void:
 				var rock_fill := Color(0.45, 0.45, 0.48)
 				if presenting and cell in _presenter.flash_rocks:
 					rock_fill = Color(0.85, 0.55, 0.35)
+				var rock_offset := Vector2.ZERO
+				if presenting:
+					rock_offset = _presenter.gravity_draw_offset(cell, cell_size)
+					if rock_offset == Vector2.ZERO:
+						rock_offset = _presenter.spawn_draw_offset(cell, cell_size)
 				var inset := rect.grow(-rect.size.x * 0.08)
+				inset.position += rock_offset
 				draw_rect(inset, rock_fill, true)
 				draw_rect(inset, Color(0.20, 0.20, 0.22), false, 2.0)
 				var font := ThemeDB.fallback_font
@@ -615,16 +621,30 @@ func _draw() -> void:
 				var text_pos := inset.position + (inset.size - text_size) * 0.5 + Vector2(0, text_size.y * 0.8)
 				draw_string(font, text_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0.95, 0.95, 0.92))
 				continue
+			# Respawn WARN: domain rock not yet applied — preview drop from above.
+			if presenting and cell in _presenter.spawn_cells:
+				if _presenter.phase == ResolutionPresenter.Phase.RESPAWN_WARN:
+					var drop := _presenter.spawn_draw_offset(cell, cell_size)
+					var rin := rect.grow(-rect.size.x * 0.08)
+					rin.position += drop
+					draw_rect(rin, Color(0.45, 0.45, 0.48), true)
+					draw_rect(rin, Color(0.95, 0.75, 0.25), false, 2.0)
+					var fnt := ThemeDB.fallback_font
+					var fs := int(maxi(12, int(rect.size.x * 0.36)))
+					var lab := "R2"
+					var ts := fnt.get_string_size(lab, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+					var tp := rin.position + (rin.size - ts) * 0.5 + Vector2(0, ts.y * 0.8)
+					draw_string(fnt, tp, lab, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.95, 0.95, 0.92))
 			var orb_id: int = row[x] if x < row.size() else -1
 			if presenting:
 				orb_id = _presenter.orb_at(cell)
 			if orb_id >= 0:
 				var fill := _orb_color(orb_id)
-				var offset := (
-					_presenter.gravity_draw_offset(cell, cell_size)
-					if presenting
-					else Vector2.ZERO
-				)
+				var offset := Vector2.ZERO
+				if presenting:
+					offset = _presenter.gravity_draw_offset(cell, cell_size)
+					if offset == Vector2.ZERO:
+						offset = _presenter.refill_draw_offset(cell, cell_size)
 				var alpha := _presenter.refill_alpha(cell) if presenting else 1.0
 				fill.a = alpha
 				var inset := rect.grow(-rect.size.x * 0.12)
