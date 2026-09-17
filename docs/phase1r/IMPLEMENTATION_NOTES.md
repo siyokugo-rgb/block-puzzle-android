@@ -193,7 +193,7 @@ DEV verification target: **6×6 / 5 OrbType** → no horizontal/vertical ≥3 af
 - Relative vertical order of orbs in a column is **preserved**
 - No orb duplication / loss / cross-column moves
 - Null / invalid board → `apply` returns `false`, no mutation
-- Obstacles / ROCK segment gravity are **out of scope** (post Gate 1)
+- Obstacles / ROCK segment gravity: delivered in **R-G** (see Phase R-G)
 
 ### Refill order — FIXED
 
