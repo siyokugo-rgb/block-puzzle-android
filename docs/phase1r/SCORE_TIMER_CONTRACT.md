@@ -150,12 +150,12 @@ UI may display seconds; domain remaining time is always ms.
 
 ### 3.3 Ticking states
 
-Timer **advances** only in:
+**Session Timer** advances in:
 
 - `IDLE`
 - `ROUTE_DRAG`
 
-Timer **does not advance** in:
+**Session Timer** does not advance in:
 
 - `RESOLVING`
 - `SESSION_OVER`
@@ -163,6 +163,23 @@ Timer **does not advance** in:
 - `INVALID`
 
 `RESOLVING` duration is **not** subtracted from the limit (timer paused for the whole cascade).
+
+### 3.3b Dual Timer — Move Timer (R-F gameplay lock)
+
+| Rule | Value |
+| --- | --- |
+| `MOVE_DURATION_MS` | **2000** (Gate 1 DEV candidate; was 1500 / 3000; not production final) |
+| Active | Only during `ROUTE_DRAG` (set on successful `begin_drag`) |
+| Idle display | Domain reports inactive (`move_remaining_ms() == 0`); UI may show `---` |
+| Tick | Same `elapsed_ms` deducted from Session + Move during `ROUTE_DRAG` |
+| Hold | Same-cell / pointer-stopped still consumes Move |
+| Pause | `RESOLVING` / `SESSION_OVER` / `ERROR` / `INVALID` — both timers paused |
+| Move → 0, swaps ≥ 1 | Forced release → resolve → Score → `IDLE` if Session > 0 |
+| Move → 0, swaps == 0 | Cancel-equivalent; no cascade; `IDLE` if Session > 0 |
+| Session → 0 during drag | Session expiry wins (even if Move also 0 same tick); one forced release |
+| Next drag | Successful `begin_drag` resets Move to 2000 |
+
+SoT remains `PuzzleSession` — UI must not independently measure the 3s budget.
 
 ### 3.4 Overshoot clamp
 

@@ -31,6 +31,9 @@
 | `CascadeResolver` | `scripts/puzzle/cascade_resolver.gd` | R-D |
 | `PuzzleSession` | `scripts/puzzle/puzzle_session.gd` | R-E |
 | `SessionMoveResult` | `scripts/puzzle/session_move_result.gd` | R-E |
+| `BoardGeometry` | `scripts/puzzle/board_geometry.gd` | R-F |
+| `GridInputMapper` | `scripts/puzzle/grid_input_mapper.gd` | R-F |
+| `PuzzleGameView` | `scripts/puzzle_ui/puzzle_game_view.gd` | R-F |
 
 Legacy `scripts/game/*` unchanged.
 
@@ -332,8 +335,69 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 
 - `advance_time(elapsed_ms)` per R-E0; ticks only `IDLE`/`ROUTE_DRAG`
 - Mid-drag expiry forced release; RESOLVING is sync domain pause (no tick during resolve)
+- **R-F Dual Timer:** Session Timer + per-drag Move Timer (`MOVE_DURATION_MS = 2000` DEV)
+  - `IDLE`: Session ticks; Move inactive (`move_remaining_ms() == 0`)
+  - `ROUTE_DRAG`: both deduct the same `elapsed_ms` (including same-cell hold)
+  - `RESOLVING` / `SESSION_OVER` / `ERROR` / `INVALID`: both paused
+  - Move expiry (`swap_count >= 1`): forced release → resolve → Score → `IDLE` if Session remains
+  - Move expiry (`swap_count == 0`): cancel-equivalent → no cascade → `IDLE` if Session remains
+  - Session expiry during drag wins over Move (including simultaneous 0); one forced release; final `SESSION_OVER`
+  - Next successful `begin_drag` resets Move to 2000 ms
+  - SoT: `PuzzleSession` (`remaining_ms`, `move_remaining_ms`, expiry precedence, forced release)
 
 ### Out of R-E scope
 
 - UI / Scene / Touch / Animation
 - 45/60/90 final pick / ROCK / Save / Ads / legacy delete
+
+---
+
+## Phase R-F — Minimal Android Playable
+
+### SoT
+
+- `PuzzleSession` remains the only game-state owner
+- UI renders `board_snapshot()`; never reimplements match/gravity/score
+- Move Timer is domain SoT — UI does **not** measure 3s independently
+
+### Input
+
+- `BoardGeometry`: pixel ↔ cell
+- `GridInputMapper`: pointer ownership (TOUCH vs MOUSE) + orthogonal interpolation
+- Fast jumps expand to adjacent 4-dir steps (tie: X first when `|dx| >= |dy|`)
+- Outside board during drag: no steps, keep route; outside release still `release_drag()` once
+- Domain forced release (Move/Session expiry) clears pointer ownership in the view adapter
+
+### Timer adapter
+
+- Accumulate `delta*1000` fractional remainder; pass every whole millisecond via `advance_time(whole_ms)` while foreground-active
+- **No per-frame gameplay cap** — active gameplay elapsed is never discarded
+- Pause when app/window unfocused (no catch-up on resume)
+- Startup / focus-return: skip a few frames, reset remainder, and drop at most one abnormal transition spike (>1s)
+- Domain `RESOLVING` pauses **both** Session and Move timers
+
+### DEV HUD
+
+- Pre-session **READY** is UI-only (`_session == null`); **no** `PuzzleSession.State.READY`
+- Launch shows START (default duration **60000** ms selected); duration buttons **select only**
+- START / Restart create `PuzzleSession`; Session Timer starts only after that
+- Pre-START: no board, no Session/Move countdown, board input disabled (UMP/ads cannot burn Score Attack time)
+- `Session: X.Ys` from `remaining_ms()` after start
+- `Move: X.Ys` only during `ROUTE_DRAG`; otherwise `Move: ---`
+- Optional DEV note when Move/Session expiry forced a release
+
+### DEV play
+
+- Seed **42**, 6×6, 5 types, duration buttons 45000/60000/90000 ms
+- Move budget DEV **2000** ms per drag (Gate 1 first evaluation: Session 60000 + Move 2000)
+- Immediate post-resolve redraw (no cascade animation)
+
+### Status
+
+- **VERIFY FIRST / FIX FIRST** — Move 2.0s + READY START; do not merge Draft PR #16; do not start R-G / Gate 1 until device re-verify
+
+### Out of R-F scope
+
+- ROCK / Save / Best Score / production art / complex animation / audio
+- R-G / Gate 1 start
+- Production-final Move duration pick (2.0s is Gate 1 DEV candidate)

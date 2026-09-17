@@ -29,7 +29,8 @@ Legacy Block Placement types remain on `main` until post–**R-F** cleanup. Phas
 | R-C MatchResolver / orthogonal clear | COMPLETE |
 | R-D Gravity / refill / cascade | COMPLETE |
 | R-E0 Provisional Score / Timer contract (docs) | COMPLETE |
-| R-E PuzzleSession / timer / score | COMPLETE (this branch; Draft PR) |
+| R-E PuzzleSession / timer / score | COMPLETE |
+| R-F Minimal Android playable Score Attack | VERIFY FIRST (this branch; Draft PR — Android device pending) |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
@@ -194,6 +195,20 @@ Roadmap (post–1-R): **R-A** board/fill → **R-B** DragRoute → **R-C** Match
 - Mid-drag expiry forced release; ERROR fail-closed
 - UI / touch / Scene: **not** in R-E
 
+## Phase R-F Minimal Score Attack UI
+
+| Type | Path |
+| --- | --- |
+| `BoardGeometry` | `scripts/puzzle/board_geometry.gd` |
+| `GridInputMapper` | `scripts/puzzle/grid_input_mapper.gd` |
+| `PuzzleGameView` | `scripts/puzzle_ui/puzzle_game_view.gd` |
+| Main shell | `scenes/main.tscn` + `scripts/main.gd` (Phase 0 ads retained) |
+
+- PuzzleSession SoT; UI draws `board_snapshot()` only
+- Touch/mouse exclusive ownership; orthogonal fast-drag interpolation (X-first ties)
+- DEV: seed **42**, 6×6, duration buttons 45/60/90s
+- Background/focus-out: do not advance timer
+
 ## Versions
 
 - Godot **4.7.2** stable (Standard / GDScript)
@@ -258,7 +273,7 @@ API audit: `tooling/admob/UMP_API_AUDIT.md`
 ./tooling/gut/run_tests.sh
 ```
 
-Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`, `tests/test_phase1a.gd`, `tests/test_phase1b.gd`, `tests/test_phase1c.gd`, `tests/test_phase_ra.gd`, `tests/test_phase_rb.gd`, `tests/test_phase_rc.gd`, `tests/test_phase_rd.gd`, `tests/test_phase_re.gd`.
+Tests: `tests/test_phase0b.gd`, `tests/test_phase0d.gd`, `tests/test_phase0e.gd`, `tests/test_phase0f.gd`, `tests/test_phase1a.gd`, `tests/test_phase1b.gd`, `tests/test_phase1c.gd`, `tests/test_phase_ra.gd`, `tests/test_phase_rb.gd`, `tests/test_phase_rc.gd`, `tests/test_phase_rd.gd`, `tests/test_phase_re.gd`, `tests/test_phase_rf.gd`.
 
 ## Debug APK / AAB
 
