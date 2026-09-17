@@ -478,7 +478,7 @@ Hypothesis only — do **not** add `ObstacleType.SLIME` / GDScript / tests in R-
 
 ### Status
 
-- **FIX FIRST** → **VERIFY FIRST** after falling-ROCK APK; **Gate 2 NOT STARTED**
+- **FIX FIRST** (presentation smoothness) → **VERIFY FIRST** after smooth-fall APK; **Gate 2 NOT STARTED**
 - Do **not** merge R-G to main until Gate 2 human comparison
 - Do **not** start LOCK / SLIME / Rescue
 
