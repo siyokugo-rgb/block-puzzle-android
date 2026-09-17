@@ -2,7 +2,7 @@ class_name CascadeResult
 extends RefCounted
 
 ## Phase R-D / R-G: cascade resolution outcome.
-## Neutral metrics only — no Score / combo formula fields.
+## Neutral metrics + optional step traces for presentation. No Score fields.
 
 
 var _valid: bool = false
@@ -12,6 +12,7 @@ var _step_count: int = 0
 var _cleared_per_step: Array[int] = []
 var _rocks_destroyed_per_step: Array[int] = []
 var _rock_hits_per_step: Array[int] = []
+var _steps: Array = [] # Array[CascadeStepTrace]
 
 
 static func invalid() -> CascadeResult:
@@ -23,6 +24,7 @@ static func invalid() -> CascadeResult:
 	result._cleared_per_step.clear()
 	result._rocks_destroyed_per_step.clear()
 	result._rock_hits_per_step.clear()
+	result._steps.clear()
 	return result
 
 
@@ -30,7 +32,8 @@ static func guard_exceeded(
 	step_count: int,
 	cleared_per_step: Array,
 	rocks_destroyed_per_step: Array = [],
-	rock_hits_per_step: Array = []
+	rock_hits_per_step: Array = [],
+	steps: Array = []
 ) -> CascadeResult:
 	var result := CascadeResult.new()
 	result._valid = false
@@ -40,6 +43,7 @@ static func guard_exceeded(
 	result._cleared_per_step = _copy_ints(cleared_per_step)
 	result._rocks_destroyed_per_step = _copy_ints(rocks_destroyed_per_step)
 	result._rock_hits_per_step = _copy_ints(rock_hits_per_step)
+	result._steps = _copy_steps(steps)
 	return result
 
 
@@ -47,7 +51,8 @@ static func stable_success(
 	step_count: int,
 	cleared_per_step: Array,
 	rocks_destroyed_per_step: Array = [],
-	rock_hits_per_step: Array = []
+	rock_hits_per_step: Array = [],
+	steps: Array = []
 ) -> CascadeResult:
 	var result := CascadeResult.new()
 	result._valid = true
@@ -57,6 +62,7 @@ static func stable_success(
 	result._cleared_per_step = _copy_ints(cleared_per_step)
 	result._rocks_destroyed_per_step = _copy_ints(rocks_destroyed_per_step)
 	result._rock_hits_per_step = _copy_ints(rock_hits_per_step)
+	result._steps = _copy_steps(steps)
 	return result
 
 
@@ -97,7 +103,6 @@ func total_rock_hits() -> int:
 	return total
 
 
-## Defensive copy of per-step unique cleared cell counts (e.g. [6, 3, 8]).
 func cleared_cell_count_per_step_snapshot() -> Array[int]:
 	return _copy_ints(_cleared_per_step)
 
@@ -110,9 +115,22 @@ func rock_hits_per_step_snapshot() -> Array[int]:
 	return _copy_ints(_rock_hits_per_step)
 
 
+## Defensive copy of CascadeStepTrace list.
+func steps_snapshot() -> Array:
+	return _copy_steps(_steps)
+
+
 static func _copy_ints(src: Array) -> Array[int]:
 	var out: Array[int] = []
 	for item in src:
 		if typeof(item) == TYPE_INT:
 			out.append(item)
+	return out
+
+
+static func _copy_steps(src: Array) -> Array:
+	var out: Array = []
+	for item in src:
+		if item is CascadeStepTrace:
+			out.append((item as CascadeStepTrace).duplicate_trace())
 	return out

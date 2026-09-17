@@ -425,11 +425,28 @@ without becoming pure annoyance? **Not** a feature-complete obstacle framework.
   — existing ROCK → `set_rock` fails (no silent HP heal)
 - Damage unit: **max 1 hit per ROCK per cascade step**
   (multi-adjacent matched cells in the same step still deal 1 damage)
+- HP is **per-cell independent** (Test A: only adjacent ROCK takes damage)
 - Cross-cascade-step damage in the same move is legal (step1 HP2→1, step2 HP1→0)
 - Cascade order: detect → unique adjacent ROCK hits → destroy only HP=0 →
   clear matched orbs → segmented gravity → refill skips living ROCK
+- Neutral `CascadeStepTrace` (matched / rock_hits / gravity_moves / refills) for UI playback
 - HP1 / HP2: both impassable, both gravity barriers, both refill-skipped
 - Score formula unchanged (no ROCK destruction bonus)
+
+### ROCK respawn (Gate 2 DEV)
+
+- `TARGET_ROCK_COUNT = 3`
+- Destroying rocks queues `_pending_rock_respawns`; **no spawn on the destroy move**
+- Next valid move (`swap_count >= 1`, stable resolve, not SESSION_OVER/ERROR): spawn **at most 1**
+- Obstacle RNG: `obstacle_seed = session_seed XOR 0x524F434B` (`OBSTACLE_RNG_SEED_XOR`)
+  — independent of `OrbGenerator` stream
+- Candidate: has orb, no obstacle; replace with ROCK HP=2; no cascade after spawn
+- No eligible cell → keep pending, no ERROR
+
+### Presentation
+
+- `ResolutionPresenter` plays domain traces only (match → rock hit → gravity → refill → respawn)
+- `presentation_busy` blocks input/timers; not a gameplay SoT
 
 ### DEV A/B
 

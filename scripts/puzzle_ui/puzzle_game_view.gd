@@ -35,6 +35,7 @@ var _obstacle_buttons: Dictionary = {} # mode -> Button
 var _start_button: Button = null
 var _restart_button: Button = null
 var _board_area: Control = null
+var _presenter := ResolutionPresenter.new()
 
 
 func _ready() -> void:
@@ -102,10 +103,16 @@ func has_playable_session() -> bool:
 
 
 func board_input_enabled() -> bool:
+	if _presenter != null and _presenter.is_busy():
+		return false
 	return has_playable_session() and (
 		_session.state() == PuzzleSession.State.IDLE
 		or _session.state() == PuzzleSession.State.ROUTE_DRAG
 	)
+
+
+func is_presentation_busy() -> bool:
+	return _presenter != null and _presenter.is_busy()
 
 
 func _build_hud() -> void:
@@ -207,6 +214,9 @@ func _enter_ready() -> void:
 	_drop_transition_spike = true
 	_last_move_note = ""
 	_geometry = null
+	if _presenter != null:
+		_presenter.busy = false
+		_presenter.phase = ResolutionPresenter.Phase.IDLE
 	_refresh_duration_buttons()
 	_refresh_obstacle_buttons()
 	_refresh_action_buttons()
@@ -250,6 +260,9 @@ func _start_session(duration_ms: int) -> void:
 	_skip_timer_frames = 2
 	_drop_transition_spike = true
 	_last_move_note = ""
+	if _presenter != null:
+		_presenter.busy = false
+		_presenter.phase = ResolutionPresenter.Phase.IDLE
 	_refresh_duration_buttons()
 	_refresh_obstacle_buttons()
 	_refresh_action_buttons()
@@ -287,6 +300,12 @@ func _refresh_action_buttons() -> void:
 
 
 func _process(delta: float) -> void:
+	# Presentation playback: no Session/Move timer drain.
+	if _presenter != null and _presenter.is_busy():
+		_presenter.advance(delta * 1000.0)
+		_refresh_hud()
+		queue_redraw()
+		return
 	# READY / pre-session: never consume Score Attack time (UMP/ads may still show).
 	if _session == null or not _session.is_valid():
 		return
@@ -439,6 +458,8 @@ func _finish_pointer() -> void:
 		queue_redraw()
 		return
 	var move := _session.release_drag()
+	# Consume stored packet so timer path does not replay the same presentation.
+	_session.consume_last_move_result()
 	if move.is_success() and move.move_score() > 0:
 		_last_move_note = "+%d  Cascade %d" % [move.move_score(), maxi(move.cascade_step_count(), 1)]
 	elif move.is_success():
@@ -447,6 +468,8 @@ func _finish_pointer() -> void:
 		_last_move_note = "ERROR"
 	else:
 		_last_move_note = ""
+	if move.is_success() and move.has_presentation():
+		_presenter.begin(move)
 	_refresh_hud()
 	queue_redraw()
 
@@ -480,6 +503,9 @@ func _on_domain_time_advanced(before_state: PuzzleSession.State) -> void:
 		_last_move_note = "Move timer expired — forced release"
 	elif reason == "session_expiry":
 		_last_move_note = "Session timer expired — forced release"
+	var move := _session.consume_last_move_result()
+	if move != null and move.is_success() and move.has_presentation():
+		_presenter.begin(move)
 
 
 func _refresh_hud() -> void:
@@ -514,7 +540,10 @@ func _refresh_hud() -> void:
 			_rock_label.text = "ROCK: %d" % _session.rock_count()
 		else:
 			_rock_label.text = "ROCK: OFF"
-	_state_label.text = "State: %s" % _state_name(_session.state())
+	if is_presentation_busy():
+		_state_label.text = "State: PRESENTING"
+	else:
+		_state_label.text = "State: %s" % _state_name(_session.state())
 	var note := _last_move_note
 	if _session.state() == PuzzleSession.State.SESSION_OVER:
 		note = "SESSION OVER — Score %d — Restart / pick 45·60·90" % _session.score()
@@ -549,8 +578,10 @@ func _draw() -> void:
 	_update_geometry()
 	if _geometry == null or _session == null:
 		return
-	var snap: Array = _session.board_snapshot()
-	var head := _session.active_drag_current_cell()
+	var presenting := _presenter != null and _presenter.is_busy()
+	var snap: Array = _presenter.vis_orbs if presenting else _session.board_snapshot()
+	var head := Vector2i(-1, -1) if presenting else _session.active_drag_current_cell()
+	var cell_size := _geometry.cell_size()
 	for y in range(DEV_HEIGHT):
 		if y >= snap.size():
 			continue
@@ -558,34 +589,61 @@ func _draw() -> void:
 		for x in range(DEV_WIDTH):
 			var cell := Vector2i(x, y)
 			var rect := _geometry.cell_rect(cell)
-			var is_rock := _session.is_rock_at(cell)
+			var is_rock := (
+				_presenter.is_rock(cell) if presenting else _session.is_rock_at(cell)
+			)
 			draw_rect(rect, Color(0.12, 0.14, 0.18), true)
 			draw_rect(rect, Color(0.35, 0.38, 0.45), false, 2.0)
+			if presenting and cell in _presenter.highlight_cells:
+				draw_rect(rect.grow(-2.0), Color(1.0, 0.95, 0.35, 0.55), false, 3.0)
+			if presenting and cell in _presenter.spawn_cells:
+				draw_rect(rect.grow(-4.0), Color(0.95, 0.75, 0.25, 0.7), false, 3.0)
 			if is_rock:
 				var rock_fill := Color(0.45, 0.45, 0.48)
+				if presenting and cell in _presenter.flash_rocks:
+					rock_fill = Color(0.85, 0.55, 0.35)
 				var inset := rect.grow(-rect.size.x * 0.08)
 				draw_rect(inset, rock_fill, true)
 				draw_rect(inset, Color(0.20, 0.20, 0.22), false, 2.0)
 				var font := ThemeDB.fallback_font
 				var font_size := int(maxi(12, int(rect.size.x * 0.36)))
-				# Gate 2 DEV: HP-visible label (R2 / R1). Not production art.
-				var hp := _session.rock_hp_at(cell)
+				var hp := (
+					_presenter.rock_hp_at(cell) if presenting else _session.rock_hp_at(cell)
+				)
 				var label := "R%d" % hp if hp > 0 else "R"
 				var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 				var text_pos := inset.position + (inset.size - text_size) * 0.5 + Vector2(0, text_size.y * 0.8)
 				draw_string(font, text_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0.95, 0.95, 0.92))
 				continue
 			var orb_id: int = row[x] if x < row.size() else -1
+			if presenting:
+				orb_id = _presenter.orb_at(cell)
 			if orb_id >= 0:
 				var fill := _orb_color(orb_id)
+				var offset := (
+					_presenter.gravity_draw_offset(cell, cell_size)
+					if presenting
+					else Vector2.ZERO
+				)
+				var alpha := _presenter.refill_alpha(cell) if presenting else 1.0
+				fill.a = alpha
 				var inset := rect.grow(-rect.size.x * 0.12)
+				inset.position += offset
 				draw_rect(inset, fill, true)
 				var label := _orb_symbol(orb_id)
 				var font := ThemeDB.fallback_font
 				var font_size := int(maxi(12, int(rect.size.x * 0.35)))
 				var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 				var text_pos := inset.position + (inset.size - text_size) * 0.5 + Vector2(0, text_size.y * 0.8)
-				draw_string(font, text_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0.05, 0.05, 0.08))
+				draw_string(
+					font,
+					text_pos,
+					label,
+					HORIZONTAL_ALIGNMENT_LEFT,
+					-1,
+					font_size,
+					Color(0.05, 0.05, 0.08, alpha)
+				)
 			if head == cell and _session.has_active_drag():
 				draw_rect(rect.grow(-3.0), Color(1.0, 1.0, 1.0, 0.85), false, 3.0)
 
