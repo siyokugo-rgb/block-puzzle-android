@@ -3,6 +3,7 @@ extends RefCounted
 
 ## Presentation-only playback of SessionMoveResult traces.
 ## Does not own gameplay state; never reimplements match/gravity/refill.
+## Fall motion uses smoothstep easing + distance-based duration (presentation only).
 
 enum Phase {
 	IDLE,
@@ -17,10 +18,21 @@ enum Phase {
 
 const MATCH_MS := 120.0
 const ROCK_HIT_MS := 130.0
-const GRAVITY_MS := 200.0
-const REFILL_MS := 180.0
-const RESPAWN_WARN_MS := 150.0
-const RESPAWN_SHOW_MS := 200.0
+
+## Distance-based fall timing (DEV). Shared by gravity / refill.
+const FALL_BASE_MS := 100.0
+const FALL_PER_CELL_MS := 30.0
+const FALL_MIN_MS := 130.0
+const FALL_MAX_MS := 260.0
+
+## Legacy aliases (= max clamp) for call sites that only need an upper bound.
+const GRAVITY_MS := FALL_MAX_MS
+const REFILL_MS := FALL_MAX_MS
+
+const RESPAWN_WARN_MS := 120.0
+const RESPAWN_SHOW_MS := 180.0
+## Presentation-only travel for respawn drop (cells above top row).
+const RESPAWN_DROP_CELLS := 1.5
 
 var busy: bool = false
 var phase: Phase = Phase.IDLE
@@ -33,21 +45,56 @@ var vis_obstacles: Array = []
 var vis_hp: Array = []
 var highlight_cells: Array[Vector2i] = []
 var rock_hit_cells: Array[Vector2i] = []
-var gravity_progress: float = 0.0 # 0..1
+var gravity_progress: float = 0.0 # 0..1 linear elapsed ratio
 var gravity_moves: Array = []
-var refill_progress: float = 0.0
+var gravity_duration_ms: float = FALL_MIN_MS
+var refill_progress: float = 0.0 # 0..1 linear elapsed ratio
 var refill_cells: Array = []
+var refill_duration_ms: float = FALL_MIN_MS
 var spawn_cells: Array[Vector2i] = []
 var flash_rocks: Array[Vector2i] = []
+
+
+## Smoothstep fall easing. Deterministic, no overshoot. Presentation only.
+static func _ease_fall(t: float) -> float:
+	var x := clampf(t, 0.0, 1.0)
+	return x * x * (3.0 - 2.0 * x)
+
+
+## Presentation duration for a fall of `cells` board steps (clamped).
+static func fall_duration_ms(cells: int) -> float:
+	var n := maxi(cells, 1)
+	return clampf(FALL_BASE_MS + FALL_PER_CELL_MS * float(n), FALL_MIN_MS, FALL_MAX_MS)
 
 
 func is_busy() -> bool:
 	return busy
 
 
+## Eased draw progress for the active gravity phase (0..1).
+func gravity_eased_progress() -> float:
+	return _ease_fall(gravity_progress)
+
+
+## Eased draw progress for the active refill phase (0..1).
+func refill_eased_progress() -> float:
+	return _ease_fall(refill_progress)
+
+
+## Eased draw progress for respawn drop (0..1). Warn stays parked above.
+func spawn_eased_progress() -> float:
+	if phase == Phase.RESPAWN_WARN:
+		return 0.0
+	if phase != Phase.RESPAWN_SHOW:
+		return 1.0
+	return _ease_fall(clampf(phase_elapsed_ms / RESPAWN_SHOW_MS, 0.0, 1.0))
+
+
 func begin(move: SessionMoveResult) -> void:
 	busy = false
 	phase = Phase.IDLE
+	gravity_duration_ms = FALL_MIN_MS
+	refill_duration_ms = FALL_MIN_MS
 	if move == null or not move.is_success() or not move.has_presentation():
 		return
 	vis_orbs = _copy_grid(move.board_before_orbs_snapshot())
@@ -79,13 +126,15 @@ func advance(delta_ms: float) -> void:
 				_clear_matched_from_vis()
 				_begin_gravity()
 		Phase.GRAVITY:
-			gravity_progress = clampf(phase_elapsed_ms / GRAVITY_MS, 0.0, 1.0)
-			if phase_elapsed_ms >= GRAVITY_MS:
+			gravity_progress = clampf(phase_elapsed_ms / gravity_duration_ms, 0.0, 1.0)
+			if phase_elapsed_ms >= gravity_duration_ms:
+				gravity_progress = 1.0
 				_commit_gravity_to_vis()
 				_begin_refill()
 		Phase.REFILL:
-			refill_progress = clampf(phase_elapsed_ms / REFILL_MS, 0.0, 1.0)
-			if phase_elapsed_ms >= REFILL_MS:
+			refill_progress = clampf(phase_elapsed_ms / refill_duration_ms, 0.0, 1.0)
+			if phase_elapsed_ms >= refill_duration_ms:
+				refill_progress = 1.0
 				_commit_refill_to_vis()
 				step_index += 1
 				if step_index < steps.size():
@@ -138,10 +187,12 @@ func is_rock(pos: Vector2i) -> bool:
 func gravity_draw_offset(pos: Vector2i, cell_size: float) -> Vector2:
 	if phase != Phase.GRAVITY or gravity_moves.is_empty():
 		return Vector2.ZERO
+	var eased := gravity_eased_progress()
 	for item in gravity_moves:
 		var mv: GravityMoveTrace = item
 		if mv.from_cell() == pos:
-			var delta := Vector2(mv.to_cell() - mv.from_cell()) * cell_size * gravity_progress
+			# Downward only; no overshoot — eased in [0,1].
+			var delta := Vector2(mv.to_cell() - mv.from_cell()) * cell_size * eased
 			return delta
 	return Vector2.ZERO
 
@@ -152,7 +203,7 @@ func refill_alpha(pos: Vector2i) -> float:
 	for item in refill_cells:
 		var rf: RefillTrace = item
 		if rf.pos() == pos:
-			return maxf(0.35, refill_progress)
+			return maxf(0.35, refill_eased_progress())
 	return 1.0
 
 
@@ -160,10 +211,11 @@ func refill_alpha(pos: Vector2i) -> float:
 func refill_draw_offset(pos: Vector2i, cell_size: float) -> Vector2:
 	if phase != Phase.REFILL:
 		return Vector2.ZERO
+	var eased := refill_eased_progress()
 	for item in refill_cells:
 		var rf: RefillTrace = item
 		if rf.pos() == pos:
-			var travel := -cell_size * (1.0 + float(pos.y)) * (1.0 - refill_progress)
+			var travel := -cell_size * (1.0 + float(pos.y)) * (1.0 - eased)
 			return Vector2(0.0, travel)
 	return Vector2.ZERO
 
@@ -173,10 +225,8 @@ func spawn_draw_offset(pos: Vector2i, cell_size: float) -> Vector2:
 		return Vector2.ZERO
 	if pos not in spawn_cells:
 		return Vector2.ZERO
-	if phase == Phase.RESPAWN_WARN:
-		return Vector2(0.0, -cell_size * 1.5)
-	var t := clampf(phase_elapsed_ms / RESPAWN_SHOW_MS, 0.0, 1.0)
-	return Vector2(0.0, -cell_size * 1.5 * (1.0 - t))
+	var eased := spawn_eased_progress()
+	return Vector2(0.0, -cell_size * RESPAWN_DROP_CELLS * (1.0 - eased))
 
 
 func _begin_step_match() -> void:
@@ -229,6 +279,17 @@ func _begin_gravity() -> void:
 	phase = Phase.GRAVITY
 	phase_elapsed_ms = 0.0
 	gravity_progress = 0.0
+	gravity_duration_ms = fall_duration_ms(_max_gravity_cells())
+
+
+func _max_gravity_cells() -> int:
+	var max_d := 0
+	for item in gravity_moves:
+		var mv: GravityMoveTrace = item
+		var dy := mv.to_cell().y - mv.from_cell().y
+		if dy > max_d:
+			max_d = dy
+	return max_d
 
 
 func _commit_gravity_to_vis() -> void:
@@ -254,9 +315,21 @@ func _begin_refill() -> void:
 	phase = Phase.REFILL
 	phase_elapsed_ms = 0.0
 	refill_progress = 0.0
+	refill_duration_ms = fall_duration_ms(_max_refill_cells())
 	for item in refill_cells:
 		var rf: RefillTrace = item
 		_set_orb(rf.pos(), rf.orb_id())
+
+
+func _max_refill_cells() -> int:
+	var max_d := 0
+	for item in refill_cells:
+		var rf: RefillTrace = item
+		# Travel from one cell above the board into target.y.
+		var d := rf.pos().y + 1
+		if d > max_d:
+			max_d = d
+	return max_d
 
 
 func _commit_refill_to_vis() -> void:

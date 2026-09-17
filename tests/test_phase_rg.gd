@@ -824,7 +824,7 @@ func test_presenter_gravity_rock_hp_and_downward_offsets() -> void:
 	presenter.advance(ResolutionPresenter.MATCH_MS)
 	presenter.advance(ResolutionPresenter.ROCK_HIT_MS)
 	assert_eq(presenter.phase, ResolutionPresenter.Phase.GRAVITY)
-	presenter.advance(ResolutionPresenter.GRAVITY_MS * 0.5)
+	presenter.advance(presenter.gravity_duration_ms * 0.5)
 	var cell_size := 40.0
 	var any_down := false
 	for item in presenter.gravity_moves:
@@ -832,9 +832,16 @@ func test_presenter_gravity_rock_hp_and_downward_offsets() -> void:
 		var off := presenter.gravity_draw_offset(mv2.from_cell(), cell_size)
 		assert_eq(off.x, 0.0)
 		assert_gt(off.y, 0.0)
+		# Mid easing stays strictly between from and to.
+		var full_y := float(mv2.to_cell().y - mv2.from_cell().y) * cell_size
+		assert_lt(off.y, full_y)
 		any_down = true
+		if mv2.is_rock():
+			assert_eq(mv2.rock_hp(), 1)
 	assert_true(any_down)
-	presenter.advance(ResolutionPresenter.GRAVITY_MS)
+	# Eased mid progress differs from linear when t=0.5 (smoothstep(0.5)=0.5 actually equal;
+	# check endpoints / monotonic via dedicated easing tests).
+	presenter.advance(presenter.gravity_duration_ms)
 	assert_eq(presenter.phase, ResolutionPresenter.Phase.REFILL)
 	if not presenter.refill_cells.is_empty():
 		var rf: RefillTrace = presenter.refill_cells[0]
@@ -880,12 +887,14 @@ func test_presenter_respawn_drop_from_above() -> void:
 	var warn_off := presenter.spawn_draw_offset(sp.pos(), cell_size)
 	assert_eq(warn_off.x, 0.0)
 	assert_lt(warn_off.y, 0.0)
+	assert_eq(warn_off.y, -cell_size * ResolutionPresenter.RESPAWN_DROP_CELLS)
 	presenter.advance(ResolutionPresenter.RESPAWN_WARN_MS)
 	assert_eq(presenter.phase, ResolutionPresenter.Phase.RESPAWN_SHOW)
 	presenter.advance(ResolutionPresenter.RESPAWN_SHOW_MS * 0.5)
 	var mid := presenter.spawn_draw_offset(sp.pos(), cell_size)
 	assert_eq(mid.x, 0.0)
 	assert_lt(mid.y, 0.0)
+	assert_gt(mid.y, warn_off.y) # moved downward toward target
 	presenter.advance(ResolutionPresenter.RESPAWN_SHOW_MS)
 	assert_false(presenter.is_busy())
 	assert_true(presenter.is_rock(sp.pos()))
@@ -901,3 +910,197 @@ func test_presenter_off_has_no_rock_animation() -> void:
 	var released := off.release_drag()
 	assert_true(released.is_success())
 	assert_eq(released.rock_spawns_snapshot().size(), 0)
+
+
+# --- Presentation easing / duration (domain unchanged) ---
+
+
+func test_ease_fall_endpoints_and_monotonic() -> void:
+	assert_eq(ResolutionPresenter._ease_fall(0.0), 0.0)
+	assert_eq(ResolutionPresenter._ease_fall(1.0), 1.0)
+	assert_eq(ResolutionPresenter._ease_fall(-1.0), 0.0)
+	assert_eq(ResolutionPresenter._ease_fall(2.0), 1.0)
+	var prev := 0.0
+	var samples: Array[float] = [0.1, 0.25, 0.5, 0.75, 0.9]
+	for t in samples:
+		var e := ResolutionPresenter._ease_fall(t)
+		assert_gt(e, 0.0)
+		assert_lt(e, 1.0)
+		assert_gte(e, prev)
+		prev = e
+	# No overshoot beyond [0,1].
+	assert_lte(ResolutionPresenter._ease_fall(0.99), 1.0)
+	# Early/late asymmetry vs linear: smoothstep(0.25)=0.15625 < 0.25.
+	assert_lt(ResolutionPresenter._ease_fall(0.25), 0.25)
+	assert_gt(ResolutionPresenter._ease_fall(0.75), 0.75)
+
+
+func test_fall_duration_scales_and_clamps() -> void:
+	var d1 := ResolutionPresenter.fall_duration_ms(1)
+	var d2 := ResolutionPresenter.fall_duration_ms(2)
+	var d5 := ResolutionPresenter.fall_duration_ms(5)
+	var d6 := ResolutionPresenter.fall_duration_ms(6)
+	var d99 := ResolutionPresenter.fall_duration_ms(99)
+	assert_eq(d1, ResolutionPresenter.FALL_MIN_MS)
+	assert_gt(d2, d1)
+	assert_gt(d5, d2)
+	assert_eq(d6, ResolutionPresenter.FALL_MAX_MS)
+	assert_eq(d99, ResolutionPresenter.FALL_MAX_MS)
+	assert_gte(d1, ResolutionPresenter.FALL_MIN_MS)
+	assert_lte(d99, ResolutionPresenter.FALL_MAX_MS)
+
+
+func test_gravity_eased_mid_and_exact_end() -> void:
+	# Synthetic one-step presentation: Orb falls 3 cells.
+	var before_orbs: Array = [
+		[OrbType.Id.ORB_0, -1],
+		[-1, -1],
+		[-1, -1],
+		[-1, -1],
+	]
+	var before_obs: Array = [
+		[ObstacleType.Id.NONE, ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE, ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE, ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE, ObstacleType.Id.NONE],
+	]
+	var before_hp: Array = [[0, 0], [0, 0], [0, 0], [0, 0]]
+	var gmove := GravityMoveTrace.create_orb(Vector2i(0, 0), Vector2i(0, 3), OrbType.Id.ORB_0)
+	var step := CascadeStepTrace.create(0, [], [], [gmove], [])
+	var move := SessionMoveResult.resolved(
+		1, [], 0, 0, false,
+		before_orbs, before_obs, before_hp,
+		[step], []
+	)
+	var presenter := ResolutionPresenter.new()
+	presenter.begin(move)
+	# No match/hit content — still walks MATCH → ROCK_HIT → GRAVITY.
+	presenter.advance(ResolutionPresenter.MATCH_MS)
+	presenter.advance(ResolutionPresenter.ROCK_HIT_MS)
+	assert_eq(presenter.phase, ResolutionPresenter.Phase.GRAVITY)
+	assert_eq(presenter.gravity_duration_ms, ResolutionPresenter.fall_duration_ms(3))
+	var cell_size := 40.0
+	var full := 3.0 * cell_size
+	# Start
+	assert_eq(presenter.gravity_draw_offset(Vector2i(0, 0), cell_size), Vector2.ZERO)
+	# Mid: between, uses easing (not snapped to cells)
+	presenter.advance(presenter.gravity_duration_ms * 0.25)
+	var mid := presenter.gravity_draw_offset(Vector2i(0, 0), cell_size)
+	assert_eq(mid.x, 0.0)
+	assert_gt(mid.y, 0.0)
+	assert_lt(mid.y, full)
+	var expected_mid := full * ResolutionPresenter._ease_fall(0.25)
+	assert_eq(mid.y, expected_mid)
+	# Finish gravity
+	presenter.advance(presenter.gravity_duration_ms)
+	assert_eq(presenter.phase, ResolutionPresenter.Phase.REFILL)
+	assert_eq(presenter.orb_at(Vector2i(0, 0)), -1)
+	assert_eq(presenter.orb_at(Vector2i(0, 3)), OrbType.Id.ORB_0)
+
+
+func test_rock_gravity_easing_preserves_hp() -> void:
+	var before_orbs: Array = [[-1], [-1], [-1], [-1]]
+	var before_obs: Array = [
+		[ObstacleType.Id.ROCK],
+		[ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE],
+	]
+	var before_hp: Array = [[1], [0], [0], [0]]
+	var gmove := GravityMoveTrace.create_rock(Vector2i(0, 0), Vector2i(0, 3), 1)
+	var step := CascadeStepTrace.create(0, [], [], [gmove], [])
+	var move := SessionMoveResult.resolved(
+		1, [], 0, 0, false,
+		before_orbs, before_obs, before_hp,
+		[step], []
+	)
+	var presenter := ResolutionPresenter.new()
+	presenter.begin(move)
+	presenter.advance(ResolutionPresenter.MATCH_MS)
+	presenter.advance(ResolutionPresenter.ROCK_HIT_MS)
+	assert_eq(presenter.phase, ResolutionPresenter.Phase.GRAVITY)
+	assert_eq(presenter.rock_hp_at(Vector2i(0, 0)), 1)
+	presenter.advance(presenter.gravity_duration_ms * 0.4)
+	assert_eq(presenter.rock_hp_at(Vector2i(0, 0)), 1) # HP unchanged mid-fall
+	var off := presenter.gravity_draw_offset(Vector2i(0, 0), 40.0)
+	assert_eq(off.x, 0.0)
+	assert_gt(off.y, 0.0)
+	presenter.advance(presenter.gravity_duration_ms)
+	assert_false(presenter.is_rock(Vector2i(0, 0)))
+	assert_true(presenter.is_rock(Vector2i(0, 3)))
+	assert_eq(presenter.rock_hp_at(Vector2i(0, 3)), 1)
+
+
+func test_refill_eased_from_above() -> void:
+	var before_orbs: Array = [[-1], [-1], [-1]]
+	var before_obs: Array = [
+		[ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE],
+	]
+	var before_hp: Array = [[0], [0], [0]]
+	var rf := RefillTrace.create(Vector2i(0, 2), OrbType.Id.ORB_3)
+	var step := CascadeStepTrace.create(0, [], [], [], [rf])
+	var move := SessionMoveResult.resolved(
+		1, [], 0, 0, false,
+		before_orbs, before_obs, before_hp,
+		[step], []
+	)
+	var presenter := ResolutionPresenter.new()
+	presenter.begin(move)
+	presenter.advance(ResolutionPresenter.MATCH_MS)
+	presenter.advance(ResolutionPresenter.ROCK_HIT_MS)
+	# Empty gravity → still enters GRAVITY then REFILL
+	presenter.advance(presenter.gravity_duration_ms)
+	assert_eq(presenter.phase, ResolutionPresenter.Phase.REFILL)
+	assert_eq(presenter.refill_duration_ms, ResolutionPresenter.fall_duration_ms(3))
+	var cell_size := 40.0
+	var start_travel := -cell_size * (1.0 + 2.0)
+	assert_eq(presenter.refill_draw_offset(Vector2i(0, 2), cell_size).y, start_travel)
+	presenter.advance(presenter.refill_duration_ms * 0.5)
+	var mid := presenter.refill_draw_offset(Vector2i(0, 2), cell_size)
+	assert_eq(mid.x, 0.0)
+	assert_lt(mid.y, 0.0)
+	assert_gt(mid.y, start_travel)
+	presenter.advance(presenter.refill_duration_ms)
+	assert_eq(presenter.refill_draw_offset(Vector2i(0, 2), cell_size), Vector2.ZERO)
+	assert_eq(presenter.orb_at(Vector2i(0, 2)), OrbType.Id.ORB_3)
+
+
+func test_delta_partition_same_final_visual() -> void:
+	var before_orbs: Array = [[OrbType.Id.ORB_1], [-1], [-1]]
+	var before_obs: Array = [
+		[ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE],
+	]
+	var before_hp: Array = [[0], [0], [0]]
+	var gmove := GravityMoveTrace.create_orb(Vector2i(0, 0), Vector2i(0, 2), OrbType.Id.ORB_1)
+	var step := CascadeStepTrace.create(0, [], [], [gmove], [])
+	var move := SessionMoveResult.resolved(
+		1, [], 0, 0, false,
+		before_orbs, before_obs, before_hp,
+		[step], []
+	)
+	var a := ResolutionPresenter.new()
+	var b := ResolutionPresenter.new()
+	a.begin(move)
+	b.begin(move)
+	# Drive both through match/hit with different chunk sizes.
+	a.advance(ResolutionPresenter.MATCH_MS)
+	a.advance(ResolutionPresenter.ROCK_HIT_MS)
+	b.advance(16.0)
+	while b.phase != ResolutionPresenter.Phase.GRAVITY:
+		b.advance(16.0)
+	var total := a.gravity_duration_ms
+	# 16ms chunks
+	while a.phase == ResolutionPresenter.Phase.GRAVITY:
+		a.advance(16.0)
+	# 33ms chunks
+	while b.phase == ResolutionPresenter.Phase.GRAVITY:
+		b.advance(33.0)
+	assert_eq(a.orb_at(Vector2i(0, 0)), -1)
+	assert_eq(b.orb_at(Vector2i(0, 0)), -1)
+	assert_eq(a.orb_at(Vector2i(0, 2)), OrbType.Id.ORB_1)
+	assert_eq(b.orb_at(Vector2i(0, 2)), OrbType.Id.ORB_1)
+	assert_eq(total, ResolutionPresenter.fall_duration_ms(2))

@@ -453,7 +453,9 @@ improve route thinking / replayability without becoming pure annoyance?
 
 - `ResolutionPresenter` plays domain traces only
   (match → rock hit → clear → gravity Orb+ROCK downward → refill from above → respawn drop)
-- Gravity / refill / respawn visuals are **top → down only** (no horizontal / upward)
+- Fall motion: smoothstep `_ease_fall` + distance-based duration
+  (`FALL_BASE_MS`/`FALL_PER_CELL_MS`, clamped `FALL_MIN_MS`..`FALL_MAX_MS`)
+- Gravity / refill / respawn visuals are **top → down only** (no horizontal / upward / overshoot)
 - `presentation_busy` blocks input/timers; not a gameplay SoT
 
 ### DEV A/B
