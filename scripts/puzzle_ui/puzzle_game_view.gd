@@ -16,6 +16,7 @@ var _geometry: BoardGeometry = null
 var _elapsed_accumulator_ms: float = 0.0
 var _app_active: bool = true
 var _duration_ms: int = DEFAULT_DURATION_MS
+var _obstacle_mode: int = PuzzleSession.ObstacleMode.ROCK
 var _last_move_note: String = ""
 var _skip_timer_frames: int = 2
 ## After startup/focus, drop one abnormal first-frame spike (>1s). Normal play has no cap.
@@ -24,10 +25,13 @@ var _hud: VBoxContainer = null
 var _score_label: Label = null
 var _session_timer_label: Label = null
 var _move_timer_label: Label = null
+var _rock_label: Label = null
 var _state_label: Label = null
 var _note_label: Label = null
 var _duration_row: HBoxContainer = null
 var _duration_buttons: Dictionary = {} # ms -> Button
+var _obstacle_row: HBoxContainer = null
+var _obstacle_buttons: Dictionary = {} # mode -> Button
 var _start_button: Button = null
 var _restart_button: Button = null
 var _board_area: Control = null
@@ -40,6 +44,18 @@ func _ready() -> void:
 	_enter_ready()
 	set_process(true)
 	queue_redraw()
+
+
+func selected_obstacle_mode() -> int:
+	return _obstacle_mode
+
+
+func select_obstacle_mode(mode: int) -> void:
+	if mode != PuzzleSession.ObstacleMode.OFF and mode != PuzzleSession.ObstacleMode.ROCK:
+		return
+	_obstacle_mode = mode
+	_refresh_obstacle_buttons()
+	_refresh_hud()
 
 
 func _notification(what: int) -> void:
@@ -116,6 +132,10 @@ func _build_hud() -> void:
 	_move_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hud.add_child(_move_timer_label)
 
+	_rock_label = Label.new()
+	_rock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hud.add_child(_rock_label)
+
 	_state_label = Label.new()
 	_state_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hud.add_child(_state_label)
@@ -136,6 +156,22 @@ func _build_hud() -> void:
 		btn.pressed.connect(_on_duration_pressed.bind(ms))
 		_duration_row.add_child(btn)
 		_duration_buttons[ms] = btn
+
+	_obstacle_row = HBoxContainer.new()
+	_obstacle_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_obstacle_row.add_theme_constant_override("separation", 8)
+	_hud.add_child(_obstacle_row)
+	_obstacle_buttons.clear()
+	var off_btn := Button.new()
+	off_btn.text = "Obstacle OFF"
+	off_btn.pressed.connect(_on_obstacle_pressed.bind(PuzzleSession.ObstacleMode.OFF))
+	_obstacle_row.add_child(off_btn)
+	_obstacle_buttons[PuzzleSession.ObstacleMode.OFF] = off_btn
+	var rock_btn := Button.new()
+	rock_btn.text = "ROCK"
+	rock_btn.pressed.connect(_on_obstacle_pressed.bind(PuzzleSession.ObstacleMode.ROCK))
+	_obstacle_row.add_child(rock_btn)
+	_obstacle_buttons[PuzzleSession.ObstacleMode.ROCK] = rock_btn
 
 	_start_button = Button.new()
 	_start_button.text = "START"
@@ -172,6 +208,7 @@ func _enter_ready() -> void:
 	_last_move_note = ""
 	_geometry = null
 	_refresh_duration_buttons()
+	_refresh_obstacle_buttons()
 	_refresh_action_buttons()
 	_refresh_hud()
 	queue_redraw()
@@ -180,6 +217,11 @@ func _enter_ready() -> void:
 func _on_duration_pressed(ms: int) -> void:
 	# Selection only — never auto-starts a session.
 	select_duration(ms)
+
+
+func _on_obstacle_pressed(mode: int) -> void:
+	# Selection only — never auto-starts a session.
+	select_obstacle_mode(mode)
 
 
 func _on_start_pressed() -> void:
@@ -195,13 +237,21 @@ func _on_restart_pressed() -> void:
 
 func _start_session(duration_ms: int) -> void:
 	_duration_ms = duration_ms
-	_session = PuzzleSession.create_score_attack(DEV_WIDTH, DEV_HEIGHT, DEV_SEED, duration_ms)
+	_session = PuzzleSession.create_score_attack(
+		DEV_WIDTH,
+		DEV_HEIGHT,
+		DEV_SEED,
+		duration_ms,
+		CascadeResolver.MAX_CASCADE_STEPS,
+		_obstacle_mode
+	)
 	_mapper.clear()
 	_elapsed_accumulator_ms = 0.0
 	_skip_timer_frames = 2
 	_drop_transition_spike = true
 	_last_move_note = ""
 	_refresh_duration_buttons()
+	_refresh_obstacle_buttons()
 	_refresh_action_buttons()
 	_refresh_hud()
 	queue_redraw()
@@ -212,6 +262,17 @@ func _refresh_duration_buttons() -> void:
 		var btn: Button = _duration_buttons[ms]
 		var selected: bool = int(ms) == _duration_ms
 		btn.text = ("%ds ★" if selected else "%ds") % int(int(ms) / 1000)
+		btn.disabled = false
+
+
+func _refresh_obstacle_buttons() -> void:
+	for mode in _obstacle_buttons.keys():
+		var btn: Button = _obstacle_buttons[mode]
+		var selected: bool = int(mode) == _obstacle_mode
+		if int(mode) == PuzzleSession.ObstacleMode.OFF:
+			btn.text = "Obstacle OFF ★" if selected else "Obstacle OFF"
+		else:
+			btn.text = "ROCK ★" if selected else "ROCK"
 		btn.disabled = false
 
 
@@ -428,8 +489,14 @@ func _refresh_hud() -> void:
 		_score_label.text = "Score: ---"
 		_session_timer_label.text = "Session: ---"
 		_move_timer_label.text = "Move: ---"
+		if _rock_label != null:
+			_rock_label.text = (
+				"ROCK: --- (ON at START)"
+				if _obstacle_mode == PuzzleSession.ObstacleMode.ROCK
+				else "ROCK: OFF"
+			)
 		_state_label.text = "State: READY"
-		_note_label.text = "READY — Pick duration and press START"
+		_note_label.text = "READY — Pick duration / Obstacle and press START"
 		_refresh_action_buttons()
 		return
 	if _session == null:
@@ -442,6 +509,11 @@ func _refresh_hud() -> void:
 		_move_timer_label.text = "Move: %.1fs" % move_sec
 	else:
 		_move_timer_label.text = "Move: ---"
+	if _rock_label != null:
+		if _session.obstacle_mode() == PuzzleSession.ObstacleMode.ROCK:
+			_rock_label.text = "ROCK: %d" % _session.rock_count()
+		else:
+			_rock_label.text = "ROCK: OFF"
 	_state_label.text = "State: %s" % _state_name(_session.state())
 	var note := _last_move_note
 	if _session.state() == PuzzleSession.State.SESSION_OVER:
@@ -486,9 +558,22 @@ func _draw() -> void:
 		for x in range(DEV_WIDTH):
 			var cell := Vector2i(x, y)
 			var rect := _geometry.cell_rect(cell)
-			var orb_id: int = row[x] if x < row.size() else -1
+			var is_rock := _session.is_rock_at(cell)
 			draw_rect(rect, Color(0.12, 0.14, 0.18), true)
 			draw_rect(rect, Color(0.35, 0.38, 0.45), false, 2.0)
+			if is_rock:
+				var rock_fill := Color(0.45, 0.45, 0.48)
+				var inset := rect.grow(-rect.size.x * 0.08)
+				draw_rect(inset, rock_fill, true)
+				draw_rect(inset, Color(0.20, 0.20, 0.22), false, 2.0)
+				var font := ThemeDB.fallback_font
+				var font_size := int(maxi(12, int(rect.size.x * 0.40)))
+				var label := "R"
+				var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+				var text_pos := inset.position + (inset.size - text_size) * 0.5 + Vector2(0, text_size.y * 0.8)
+				draw_string(font, text_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0.95, 0.95, 0.92))
+				continue
+			var orb_id: int = row[x] if x < row.size() else -1
 			if orb_id >= 0:
 				var fill := _orb_color(orb_id)
 				var inset := rect.grow(-rect.size.x * 0.12)

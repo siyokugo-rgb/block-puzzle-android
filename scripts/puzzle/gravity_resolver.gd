@@ -1,12 +1,12 @@
 class_name GravityResolver
 extends RefCounted
 
-## Phase R-D: per-column downward compact (y=0 top, y=height-1 bottom).
-## Preserves relative orb order within each column. No cross-column moves.
-## Obstacles / ROCK segment gravity are out of scope.
+## Phase R-D / R-G: per-column downward compact with ROCK vertical barriers.
+## Living ROCK cells split each column into segments; orbs never cross ROCK.
+## Preserves relative orb order within each segment. No cross-column moves.
 
 
-## Compact orbs toward the bottom of each column.
+## Compact orbs toward the bottom of each ROCK-bounded segment.
 ## Returns true on success. Null / invalid board → false, no mutation.
 static func apply(board: PuzzleBoard) -> bool:
 	if board == null or not board.is_valid():
@@ -20,22 +20,43 @@ static func apply(board: PuzzleBoard) -> bool:
 
 
 static func _compact_column(board: PuzzleBoard, x: int, h: int) -> bool:
-	# Bottom → top scan with write_y: place each orb at the next free bottom slot.
-	var write_y := h - 1
-	for y in range(h - 1, -1, -1):
-		var id := board.orb_at(Vector2i(x, y))
+	var barriers: Array[int] = []
+	for y in range(h):
+		if board.is_rock(Vector2i(x, y)):
+			barriers.append(y)
+	# Sentinels: segment bounds are exclusive rock rows / board edges.
+	var edges: Array[int] = [-1]
+	edges.append_array(barriers)
+	edges.append(h)
+	for i in range(edges.size() - 1):
+		var top: int = edges[i] + 1
+		var bottom: int = edges[i + 1] - 1
+		if top > bottom:
+			continue
+		if not _compact_segment(board, x, top, bottom):
+			return false
+	return true
+
+
+## Compact orbs in inclusive [top, bottom] toward bottom. ROCK must not be inside.
+static func _compact_segment(board: PuzzleBoard, x: int, top: int, bottom: int) -> bool:
+	var write_y := bottom
+	for y in range(bottom, top - 1, -1):
+		var pos := Vector2i(x, y)
+		if board.is_rock(pos):
+			return false
+		var id := board.orb_at(pos)
 		if id < 0:
 			continue
 		if y != write_y:
-			# Move orb down. write_y is always empty or equal to y (already scanned).
-			if not board.clear_orb(Vector2i(x, y)):
+			if not board.clear_orb(pos):
 				return false
 			if not board.set_orb(Vector2i(x, write_y), id):
 				return false
 		write_y -= 1
-	# Anything still above the last written slot must be empty.
-	for y in range(write_y + 1):
-		if board.has_orb(Vector2i(x, y)):
-			if not board.clear_orb(Vector2i(x, y)):
+	for y in range(top, write_y + 1):
+		var clear_pos := Vector2i(x, y)
+		if board.has_orb(clear_pos):
+			if not board.clear_orb(clear_pos):
 				return false
 	return true

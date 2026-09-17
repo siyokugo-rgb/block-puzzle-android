@@ -71,9 +71,10 @@ func fill_match_stable(board: PuzzleBoard) -> bool:
 	var w := board.width()
 	var h := board.height()
 	# Empty-board precondition — reject without consuming RNG.
+	# Empty = no orb and no obstacle (ROCK must not be present before fill).
 	for y in range(h):
 		for x in range(w):
-			if board.has_orb(Vector2i(x, y)):
+			if not board.is_empty(Vector2i(x, y)):
 				return false
 	for y in range(h):
 		for x in range(w):

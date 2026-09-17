@@ -19,6 +19,19 @@ const SCORE_MAX := 9223372036854775807
 ## Per-drag move budget (Phase R-F Gate 1 DEV value; not production final).
 const MOVE_DURATION_MS := 2000
 
+## Gate 2 DEV: Obstacle OFF keeps R-F baseline; ROCK uses fixed 3-rock layout.
+enum ObstacleMode {
+	OFF,
+	ROCK,
+}
+
+## Fixed DEV ROCK positions for Gate 2 A/B (not production layout).
+const DEV_ROCK_LAYOUT: Array[Vector2i] = [
+	Vector2i(1, 2),
+	Vector2i(3, 3),
+	Vector2i(4, 1),
+]
+
 var _state: State = State.INVALID
 var _board: PuzzleBoard = null
 var _generator: OrbGenerator = null
@@ -29,19 +42,22 @@ var _score: int = 0
 var _max_cascade_steps: int = CascadeResolver.MAX_CASCADE_STEPS
 var _expiry_handled: bool = false
 var _last_end_reason: String = ""
+var _obstacle_mode: ObstacleMode = ObstacleMode.OFF
 
 
 ## Create a Score Attack session. Uses one OrbGenerator for fill + later cascade refill.
 ## Optional max_cascade_steps is an internal safety seam (default 128); not a gameplay flag.
+## obstacle_mode: OFF = R-F baseline; ROCK = apply DEV_ROCK_LAYOUT after stable fill.
 static func create_score_attack(
 	width: int,
 	height: int,
 	seed_value: int,
 	duration_ms: int,
-	max_cascade_steps: int = CascadeResolver.MAX_CASCADE_STEPS
+	max_cascade_steps: int = CascadeResolver.MAX_CASCADE_STEPS,
+	obstacle_mode: int = ObstacleMode.OFF
 ) -> PuzzleSession:
 	var session := PuzzleSession.new()
-	session._build(width, height, seed_value, duration_ms, max_cascade_steps)
+	session._build(width, height, seed_value, duration_ms, max_cascade_steps, obstacle_mode)
 	return session
 
 
@@ -50,7 +66,8 @@ func _build(
 	height: int,
 	seed_value: int,
 	duration_ms: int,
-	max_cascade_steps: int
+	max_cascade_steps: int,
+	obstacle_mode: int
 ) -> void:
 	_state = State.INVALID
 	_board = null
@@ -62,12 +79,15 @@ func _build(
 	_max_cascade_steps = max_cascade_steps
 	_expiry_handled = false
 	_last_end_reason = ""
+	_obstacle_mode = ObstacleMode.OFF
 
 	if width <= 0 or height <= 0:
 		return
 	if duration_ms <= 0:
 		return
 	if max_cascade_steps < 0:
+		return
+	if obstacle_mode != ObstacleMode.OFF and obstacle_mode != ObstacleMode.ROCK:
 		return
 
 	var board := PuzzleBoard.create(width, height)
@@ -83,12 +103,30 @@ func _build(
 	if not opening.is_valid() or opening.has_matches():
 		return
 
+	if obstacle_mode == ObstacleMode.ROCK:
+		if not _apply_dev_rock_layout(board):
+			return
+		# Replacing orbs with ROCK cannot create matches (ROCK has no orb).
+		var after_rocks := MatchResolver.detect(board)
+		if not after_rocks.is_valid() or after_rocks.has_matches():
+			return
+
 	_board = board
 	_generator = generator
 	_remaining_ms = duration_ms
 	_move_remaining_ms = 0
 	_score = 0
+	_obstacle_mode = obstacle_mode as ObstacleMode
 	_state = State.IDLE
+
+
+static func _apply_dev_rock_layout(board: PuzzleBoard) -> bool:
+	for pos in DEV_ROCK_LAYOUT:
+		if not board.in_bounds(pos):
+			return false
+		if not board.set_rock(pos):
+			return false
+	return true
 
 
 # --- Read API ---
@@ -144,6 +182,28 @@ func board_snapshot() -> Array:
 	if _board == null or not _board.is_valid():
 		return []
 	return _board.snapshot_orb_ids()
+
+
+func obstacle_snapshot() -> Array:
+	if _board == null or not _board.is_valid():
+		return []
+	return _board.snapshot_obstacle_types()
+
+
+func obstacle_mode() -> ObstacleMode:
+	return _obstacle_mode
+
+
+func rock_count() -> int:
+	if _board == null or not _board.is_valid():
+		return 0
+	return _board.rock_count()
+
+
+func is_rock_at(pos: Vector2i) -> bool:
+	if _board == null or not _board.is_valid():
+		return false
+	return _board.is_rock(pos)
 
 
 func has_active_drag() -> bool:

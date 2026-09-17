@@ -10,10 +10,12 @@
 | **R-D** | GravityResolver / refill / CascadeResolver / finite safety guard |
 | **R-E0** | Provisional Score / Timer / Session-state contracts (**docs only**; gate before R-E) |
 | **R-E** | PuzzleSession / timer / mid-drag forced release / provisional Score |
-| **R-F** | Minimal Puzzle UI / Android touch / playable Score Attack / 45·60·90 device comparison |
-| **Gate 1** | After R-F Android playable COMPLETE |
+| **R-F** | Minimal Puzzle UI / Android touch / playable Score Attack / Dual Timer — **MERGED** (#16) |
+| **Gate 1** | **PASS WITH FINDINGS** (human device eval; not market proof) |
+| **R-G** | Minimal ROCK Obstacle vertical slice (Gate 2 A/B) |
+| **Gate 2** | After R-G Android COMPLETE — OFF vs ROCK comparison |
 | Post R-F | Legacy Block Placement deletion decision |
-| Post Gate 1 | ROCK (then LOCK / SLIME / …) |
+| Post Gate 2 | LOCK / SLIME / Rescue (not before) |
 
 ## Paths
 
@@ -394,10 +396,51 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 
 ### Status
 
-- **VERIFY FIRST / FIX FIRST** — Move 2.0s + READY START; do not merge Draft PR #16; do not start R-G / Gate 1 until device re-verify
+- **COMPLETE** — PR #16 merge-commit to `main` (`b9ed25c`); feature HEAD `f2d30f0`
+- Gate 1: **PASS WITH FINDINGS** (Move 2.0s / Session 60s baseline accepted as Gate 1 DEV, not production final)
+- Findings: replayability UNPROVEN; score agency WEAK; obstacle hypothesis UNVERIFIED
 
 ### Out of R-F scope
 
 - ROCK / Save / Best Score / production art / complex animation / audio
-- R-G / Gate 1 start
-- Production-final Move duration pick (2.0s is Gate 1 DEV candidate)
+- Production-final Move duration pick (2.0s remains Gate 1 DEV baseline)
+
+---
+
+## Phase R-G — Minimal ROCK Obstacle Vertical Slice
+
+### Purpose
+
+Hypothesis check for Gate 2: does impassable ROCK improve route thinking / replayability
+without becoming pure annoyance? **Not** a feature-complete obstacle framework.
+
+### Domain
+
+- `ObstacleType`: `NONE` / `ROCK` only (`scripts/puzzle/obstacle_type.gd`)
+- `PuzzleCell`: optional orb + optional obstacle; **ROCK ⇒ no orb** (invariant)
+- `PuzzleBoard`: `has_obstacle` / `obstacle_at` / `set_rock` / `clear_obstacle` /
+  `snapshot_obstacle_types` / `rock_count`; `is_empty` = no orb **and** no obstacle
+- Swap SoT: ROCK cells cannot be swap source/destination (DragRoute has no ROCK special-case)
+- Match: ROCK has no orb → naturally breaks runs (no ROCK-specific match rule)
+- Cascade order: detect → adjacent ROCK union destroy (1-hit, orthogonal, simultaneous) →
+  clear matched orbs → segmented gravity → refill skips ROCK (no RNG on ROCK cells)
+- Gravity: living ROCK is a vertical barrier; columns split into segments; orbs never cross ROCK
+- Score formula unchanged (no ROCK destruction bonus)
+
+### DEV A/B
+
+- READY: Obstacle **OFF** | **ROCK** (default ROCK); selection only until START
+- ROCK layout (fixed, not production): `(1,2)`, `(3,3)`, `(4,1)` after match-stable fill
+- Same seed 42 / Session 60s / Move 2.0s / 6×6 / 5 OrbTypes
+- HUD: `ROCK: N` remaining count; cells draw gray + `"R"` (no orb number on ROCK)
+
+### Status
+
+- Implementation + GUT in progress toward COMPLETE; **Gate 2 NOT STARTED**
+- Do **not** merge R-G to main until Gate 2 human comparison
+- Do **not** start LOCK / SLIME / Rescue
+
+### Out of R-G scope
+
+- LOCK / SLIME / Rescue / Stage Mode / Score redesign / durability / production art
+- Large obstacle event framework
