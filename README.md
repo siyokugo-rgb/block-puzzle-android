@@ -31,7 +31,9 @@ Legacy Block Placement types remain on `main` until post–**R-F** cleanup. Phas
 | R-E0 Provisional Score / Timer contract (docs) | COMPLETE |
 | R-E PuzzleSession / timer / score | COMPLETE |
 | R-F Minimal Android playable Score Attack | COMPLETE |
-| R-G Minimal ROCK Obstacle vertical slice | COMPLETE — PR #17 merge-commit `635085f`; Gate 2 NOT STARTED |
+| R-G Minimal ROCK Obstacle vertical slice | COMPLETE — PR #17 merge-commit `635085f` |
+| Gate 2-A Game modes / Obstacle progression / eval contract | COMPLETE (docs) — see [`docs/phase1r/GATE2_GAME_DESIGN.md`](docs/phase1r/GATE2_GAME_DESIGN.md) |
+| Gate 2-B Live ROCK evaluation | NOT STARTED |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
