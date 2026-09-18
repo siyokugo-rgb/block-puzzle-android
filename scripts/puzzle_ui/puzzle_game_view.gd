@@ -3,6 +3,7 @@ extends Control
 
 ## Phase R-F/R-G: minimal Score Attack view. PuzzleSession is the only game-state SoT.
 ## Pre-session READY is UI-only (no PuzzleSession.State.READY). Session starts on START/Restart.
+## Pre-game (OPENING + COUNTDOWN) freezes Session Timer; gameplay presentation keeps it live.
 
 const DEV_SEED := 42
 const DEV_WIDTH := 6
@@ -14,6 +15,18 @@ const TARGET_FPS := 60
 ## DEV-only FPS overlay (not production UI).
 const SHOW_DEV_FPS := true
 const FPS_SAMPLE_INTERVAL_MS := 500.0
+## Pre-game 3·2·1 (delta_ms-based; not frame-count).
+const PRESTART_COUNTDOWN_MS := 3000.0
+const COUNTDOWN_DIGIT_MS := 1000.0
+## Non-blocking GO overlay after countdown; Session/input already live.
+const GO_OVERLAY_MS := 400.0
+
+enum StartPhase {
+	READY,
+	OPENING,
+	COUNTDOWN,
+	RUNNING,
+}
 
 var _session: PuzzleSession = null
 var _mapper := GridInputMapper.new()
@@ -26,6 +39,9 @@ var _last_move_note: String = ""
 var _skip_timer_frames: int = 2
 ## After startup/focus, drop one abnormal first-frame spike (>1s). Normal play has no cap.
 var _drop_transition_spike: bool = true
+var _start_phase: int = StartPhase.READY
+var _countdown_elapsed_ms: float = 0.0
+var _go_overlay_remaining_ms: float = 0.0
 var _hud: VBoxContainer = null
 var _score_label: Label = null
 var _session_timer_label: Label = null
@@ -40,6 +56,7 @@ var _obstacle_buttons: Dictionary = {} # mode -> Button
 var _start_button: Button = null
 var _restart_button: Button = null
 var _board_area: Control = null
+var _countdown_overlay: Label = null
 var _presenter := ResolutionPresenter.new()
 var _fps_label: Label = null
 var _fps_sample_accum_ms: float = 0.0
@@ -111,7 +128,47 @@ func has_playable_session() -> bool:
 	return _session != null and _session.is_valid()
 
 
+func start_phase() -> int:
+	return _start_phase
+
+
+func is_pre_game() -> bool:
+	return _start_phase == StartPhase.OPENING or _start_phase == StartPhase.COUNTDOWN
+
+
+func is_gameplay_running() -> bool:
+	return _start_phase == StartPhase.RUNNING
+
+
+## Countdown digit 3/2/1 while COUNTDOWN; 0 otherwise.
+func countdown_digit() -> int:
+	if _start_phase != StartPhase.COUNTDOWN:
+		return 0
+	var idx := int(floor(_countdown_elapsed_ms / COUNTDOWN_DIGIT_MS))
+	if idx <= 0:
+		return 3
+	if idx == 1:
+		return 2
+	return 1
+
+
+func is_go_overlay_visible() -> bool:
+	return _start_phase == StartPhase.RUNNING and _go_overlay_remaining_ms > 0.0
+
+
+## Test helper: skip opening/countdown into RUNNING without consuming Session time.
+func force_enter_running_for_tests() -> void:
+	if _presenter != null:
+		_presenter.busy = false
+		_presenter.phase = ResolutionPresenter.Phase.IDLE
+	_begin_running()
+
+
 func board_input_enabled() -> bool:
+	# Pre-game (OPENING / COUNTDOWN) never accepts board input.
+	if _start_phase != StartPhase.RUNNING:
+		return false
+	# Gameplay presentation still blocks input (visual ≠ domain board).
 	if _presenter != null and _presenter.is_busy():
 		return false
 	return has_playable_session() and (
@@ -214,6 +271,19 @@ func _build_hud() -> void:
 	_board_area.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hud.add_child(_board_area)
 
+	# Reused overlay (never recreated per frame) for 3·2·1 / GO.
+	_countdown_overlay = Label.new()
+	_countdown_overlay.name = "CountdownOverlay"
+	_countdown_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_countdown_overlay.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_countdown_overlay.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_countdown_overlay.add_theme_font_size_override("font_size", 96)
+	_countdown_overlay.add_theme_color_override("font_color", Color(0.98, 0.98, 0.95, 0.95))
+	_countdown_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_countdown_overlay.visible = false
+	_countdown_overlay.text = ""
+	_board_area.add_child(_countdown_overlay)
+
 	if SHOW_DEV_FPS:
 		_fps_label = Label.new()
 		_fps_label.name = "DevFpsLabel"
@@ -238,9 +308,13 @@ func _enter_ready() -> void:
 	_drop_transition_spike = true
 	_last_move_note = ""
 	_geometry = null
+	_start_phase = StartPhase.READY
+	_countdown_elapsed_ms = 0.0
+	_go_overlay_remaining_ms = 0.0
 	if _presenter != null:
 		_presenter.busy = false
 		_presenter.phase = ResolutionPresenter.Phase.IDLE
+	_update_countdown_overlay()
 	_refresh_duration_buttons()
 	_refresh_obstacle_buttons()
 	_refresh_action_buttons()
@@ -281,30 +355,36 @@ func _start_session(duration_ms: int) -> void:
 	)
 	_mapper.clear()
 	_elapsed_accumulator_ms = 0.0
-	_skip_timer_frames = 2
-	_drop_transition_spike = true
+	_skip_timer_frames = 0
+	_drop_transition_spike = false
 	_last_move_note = ""
+	_countdown_elapsed_ms = 0.0
+	_go_overlay_remaining_ms = 0.0
 	if _presenter != null:
 		_presenter.busy = false
 		_presenter.phase = ResolutionPresenter.Phase.IDLE
 	_refresh_duration_buttons()
 	_refresh_obstacle_buttons()
 	_refresh_action_buttons()
+	# ROCK: opening drop first (pre-game). OFF: skip straight to countdown.
+	if _try_begin_opening_rock_presentation():
+		_start_phase = StartPhase.OPENING
+	else:
+		_begin_countdown()
 	_refresh_hud()
-	_begin_opening_rock_presentation_if_needed()
 	queue_redraw()
 
 
 ## Presentation-only: initial R2 rocks drop from above into seeded top-row columns.
-## Domain already holds final rocks; Session Timer keeps running while presenter is busy.
-func _begin_opening_rock_presentation_if_needed() -> void:
+## Pre-game: Session Timer frozen while opening plays.
+func _try_begin_opening_rock_presentation() -> bool:
 	if _session == null or not _session.is_valid():
-		return
+		return false
 	if _session.obstacle_mode() != PuzzleSession.ObstacleMode.ROCK:
-		return
+		return false
 	var positions := _session.initial_rock_positions()
 	if positions.is_empty():
-		return
+		return false
 	var before_orbs: Array = _session.board_snapshot()
 	var before_obs: Array = _session.obstacle_snapshot()
 	var before_hp: Array = _session.obstacle_hp_snapshot()
@@ -326,6 +406,49 @@ func _begin_opening_rock_presentation_if_needed() -> void:
 		spawns
 	)
 	_presenter.begin(move)
+	return _presenter.is_busy()
+
+
+func _begin_countdown() -> void:
+	_start_phase = StartPhase.COUNTDOWN
+	_countdown_elapsed_ms = 0.0
+	_go_overlay_remaining_ms = 0.0
+	_mapper.clear()
+	_update_countdown_overlay()
+	_refresh_hud()
+	queue_redraw()
+
+
+func _begin_running() -> void:
+	_start_phase = StartPhase.RUNNING
+	_countdown_elapsed_ms = 0.0
+	_go_overlay_remaining_ms = GO_OVERLAY_MS
+	# Clear any pre-game press so it cannot become the first drag.
+	_mapper.clear()
+	_elapsed_accumulator_ms = 0.0
+	_skip_timer_frames = 0
+	_drop_transition_spike = false
+	_update_countdown_overlay()
+	_refresh_hud()
+	queue_redraw()
+
+
+func _update_countdown_overlay() -> void:
+	if _countdown_overlay == null:
+		return
+	var next := ""
+	var show := false
+	if _start_phase == StartPhase.COUNTDOWN:
+		show = true
+		next = str(countdown_digit())
+	elif is_go_overlay_visible():
+		show = true
+		next = "GO!"
+	_countdown_overlay.visible = show
+	if show and _countdown_overlay.text != next:
+		_countdown_overlay.text = next
+	elif not show and _countdown_overlay.text != "":
+		_countdown_overlay.text = ""
 
 
 func _refresh_duration_buttons() -> void:
@@ -359,20 +482,40 @@ func _refresh_action_buttons() -> void:
 
 func _process(delta: float) -> void:
 	_update_dev_fps_monitor(delta)
-	# 1) Advance presentation independently of Session Timer.
-	var presenting := _presenter != null and _presenter.is_busy()
-	if presenting:
-		_presenter.advance(delta * 1000.0)
-	# 2) Session Timer: after START, runs during presentation too (Score Attack tempo).
-	# Move Timer stays domain ROUTE_DRAG-only (advance_time); presentation never invents drag time.
-	_advance_session_clock(delta)
+	# Pre-game vs gameplay: do not use presenter.busy alone for Session clock.
+	if _app_active:
+		match _start_phase:
+			StartPhase.OPENING:
+				if _presenter != null and _presenter.is_busy():
+					_presenter.advance(delta * 1000.0)
+				else:
+					_begin_countdown()
+			StartPhase.COUNTDOWN:
+				_countdown_elapsed_ms += delta * 1000.0
+				if _countdown_elapsed_ms >= PRESTART_COUNTDOWN_MS:
+					_begin_running()
+				else:
+					_update_countdown_overlay()
+			StartPhase.RUNNING:
+				if _presenter != null and _presenter.is_busy():
+					_presenter.advance(delta * 1000.0)
+				_advance_session_clock(delta)
+				if _go_overlay_remaining_ms > 0.0:
+					_go_overlay_remaining_ms = maxf(0.0, _go_overlay_remaining_ms - delta * 1000.0)
+					if _go_overlay_remaining_ms <= 0.0:
+						_update_countdown_overlay()
+			_:
+				pass
 	_refresh_hud()
-	if presenting or (_session != null and _session.is_valid()):
+	if _start_phase != StartPhase.READY or (_session != null and _session.is_valid()):
 		queue_redraw()
 
 
-## Foreground Session clock. READY / background / SESSION_OVER / ERROR do not consume time.
+## Foreground Session clock. Pre-game / READY / background / SESSION_OVER / ERROR do not consume time.
+## After RUNNING: advances during gameplay presentation too (Score Attack tempo).
 func _advance_session_clock(delta: float) -> void:
+	if _start_phase != StartPhase.RUNNING:
+		return
 	if _session == null or not _session.is_valid():
 		return
 	if not _app_active:
@@ -617,13 +760,27 @@ func _refresh_hud() -> void:
 			_rock_label.text = "ROCK: %d" % _session.rock_count()
 		else:
 			_rock_label.text = "ROCK: OFF"
-	if is_presentation_busy():
-		_state_label.text = "State: PRESENTING"
-	else:
-		_state_label.text = "State: %s" % _state_name(_session.state())
+	match _start_phase:
+		StartPhase.OPENING:
+			_state_label.text = "State: OPENING"
+		StartPhase.COUNTDOWN:
+			_state_label.text = "State: COUNTDOWN"
+		StartPhase.RUNNING:
+			if is_presentation_busy():
+				_state_label.text = "State: PRESENTING"
+			else:
+				_state_label.text = "State: %s" % _state_name(_session.state())
+		_:
+			_state_label.text = "State: READY"
 	var note := _last_move_note
+	if _start_phase == StartPhase.OPENING:
+		note = "Opening — rocks dropping"
+	elif _start_phase == StartPhase.COUNTDOWN:
+		note = "Get ready — %d" % countdown_digit()
+	elif is_go_overlay_visible():
+		note = "GO!"
 	# SESSION OVER banner waits until presentation finishes (expiry mid-anim is OK).
-	if not is_presentation_busy() and _session.state() == PuzzleSession.State.SESSION_OVER:
+	elif not is_presentation_busy() and _session.state() == PuzzleSession.State.SESSION_OVER:
 		note = "SESSION OVER — Score %d — Restart / pick 45·60·90" % _session.score()
 	elif _session.state() == PuzzleSession.State.ERROR:
 		note = "ERROR — input blocked"

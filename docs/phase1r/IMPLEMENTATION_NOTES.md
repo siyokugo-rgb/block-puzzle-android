@@ -466,9 +466,13 @@ improve route thinking / replayability without becoming pure annoyance?
   static layer suppresses sources/targets until phase-end commit (no teleport / double-draw)
 - Gravity / refill / respawn visuals are **top → down only** (no horizontal / upward / overshoot)
 - START opening: seeded initial R2 rocks drop from above into top-row targets (same respawn-style path)
-- `presentation_busy` blocks **input** only; Session Timer still runs after START (not a gameplay SoT)
+- **Pre-game:** OPENING + 3·2·1 countdown (`PRESTART_COUNTDOWN_MS=3000`) — Session Timer **frozen**; board input blocked
+- **GO!** (`GO_OVERLAY_MS=400`, non-blocking): Session Timer **starts**; input enabled; mapper cleared (no touch carry-over)
+- After RUNNING: `presentation_busy` blocks **input** only; Session Timer still runs (not a gameplay SoT)
+- Obstacle OFF: skip opening → COUNTDOWN → GO
 - Render target: **60fps** (`application/run/max_fps=60` + `Engine.max_fps`); animations stay delta_ms-based
 - DEV-only FPS overlay (`SHOW_DEV_FPS`, ~500ms sample) — not production UI
+- Countdown overlay Label is created once and text-updated (not rebuilt each frame)
 
 ### DEV A/B
 
@@ -492,9 +496,9 @@ Hypothesis only — do **not** add `ObstacleType.SLIME` / GDScript / tests in R-
 
 ### Status
 
-- **FIX FIRST** (live Session Timer during presentation + continuous fall tokens) → **VERIFY FIRST** after APK;
+- **FIX FIRST** (pre-game 3·2·1 countdown + GO) → **VERIFY FIRST** after APK;
   **Gate 2 NOT STARTED**
-- Note for Gate 2 / Score redesign: long cascade presentation consumes Score Attack time by design
+- Note for Gate 2 / Score redesign: long cascade presentation consumes Score Attack time by design (after GO)
 - Do **not** merge R-G to main until Gate 2 human comparison
 - Do **not** start LOCK / SLIME / Rescue
 

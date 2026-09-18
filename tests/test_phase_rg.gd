@@ -1246,22 +1246,19 @@ func test_initial_rocks_do_not_consume_orb_rng() -> void:
 			assert_eq(off.orb_at(pos), rock.orb_at(pos))
 
 
-func test_opening_rock_presentation_blocks_input_timer_runs() -> void:
+func test_opening_rock_presentation_blocks_input_timer_frozen() -> void:
 	var view := PuzzleGameView.new()
 	add_child_autofree(view)
 	view.select_obstacle_mode(PuzzleSession.ObstacleMode.ROCK)
 	view.start_selected_session()
 	assert_true(view.has_playable_session())
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.OPENING)
 	assert_true(view.is_presentation_busy())
 	assert_false(view.board_input_enabled())
-	# Drain startup skip frames so Session clock can tick during opening.
-	view._skip_timer_frames = 0
-	view._drop_transition_spike = false
-	view._elapsed_accumulator_ms = 0.0
-	var rem := view._session.remaining_ms()
-	assert_eq(rem, 60000)
+	assert_eq(view._session.remaining_ms(), 60000)
 	view._process(0.100)
-	assert_lt(view._session.remaining_ms(), rem)
+	# Pre-game opening: Session Timer frozen.
+	assert_eq(view._session.remaining_ms(), 60000)
 	assert_eq(view._session.move_remaining_ms(), 0)
 	assert_false(view._session.has_active_move_timer())
 	assert_true(view.is_presentation_busy())
@@ -1275,18 +1272,117 @@ func test_opening_rock_presentation_blocks_input_timer_runs() -> void:
 	var warn := view._presenter.spawn_draw_offset(pos, cell_size)
 	assert_eq(warn.x, 0.0)
 	assert_lt(warn.y, 0.0)
-	# Target static ROCK suppressed until landing.
 	assert_true(view._presenter.is_spawn_target(pos))
 	assert_false(view._presenter.is_rock(pos))
-	# Finish opening.
+	# Finish opening → COUNTDOWN (still pre-game).
 	for _i in range(40):
-		if not view.is_presentation_busy():
+		if view.start_phase() != PuzzleGameView.StartPhase.OPENING:
 			break
 		view._process(0.05)
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.COUNTDOWN)
 	assert_false(view.is_presentation_busy())
-	assert_true(view.board_input_enabled())
+	assert_false(view.board_input_enabled())
+	assert_eq(view._session.remaining_ms(), 60000)
+	assert_eq(view.countdown_digit(), 3)
 	assert_true(view._session.is_rock_at(pos))
 	assert_eq(view._session.rock_hp_at(pos), 2)
+
+
+func test_countdown_3_2_1_go_starts_session_clock() -> void:
+	var view := PuzzleGameView.new()
+	add_child_autofree(view)
+	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
+	view.select_duration(60000)
+	view.start_selected_session()
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.COUNTDOWN)
+	assert_eq(view.countdown_digit(), 3)
+	assert_eq(view._session.remaining_ms(), 60000)
+	assert_false(view.board_input_enabled())
+	view._process(1.0)
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.COUNTDOWN)
+	assert_eq(view.countdown_digit(), 2)
+	assert_eq(view._session.remaining_ms(), 60000)
+	view._process(1.0)
+	assert_eq(view.countdown_digit(), 1)
+	assert_eq(view._session.remaining_ms(), 60000)
+	view._process(1.0)
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.RUNNING)
+	assert_true(view.board_input_enabled())
+	assert_eq(view._session.remaining_ms(), 60000) # pre-game not consumed
+	assert_true(view.is_go_overlay_visible())
+	# GO overlay: Session clock runs; input enabled.
+	view._process(0.100)
+	assert_lt(view._session.remaining_ms(), 60000)
+	assert_true(view.board_input_enabled())
+	# Overlay expires without blocking gameplay.
+	view._process(0.400)
+	assert_false(view.is_go_overlay_visible())
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.RUNNING)
+
+
+func test_countdown_durations_go_full_value() -> void:
+	for dur in [45000, 60000, 90000]:
+		var view := PuzzleGameView.new()
+		add_child_autofree(view)
+		view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
+		view.select_duration(dur)
+		view.start_selected_session()
+		assert_eq(view._session.remaining_ms(), dur)
+		view._process(3.0)
+		assert_eq(view.start_phase(), PuzzleGameView.StartPhase.RUNNING)
+		assert_eq(view._session.remaining_ms(), dur)
+
+
+func test_countdown_clears_mapper_no_touch_carryover() -> void:
+	var view := PuzzleGameView.new()
+	add_child_autofree(view)
+	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
+	view.start_selected_session()
+	# Simulate a stuck press ownership during countdown (must not carry into GO).
+	view._mapper.begin_touch(0)
+	assert_ne(view._mapper.source, GridInputMapper.PointerSource.NONE)
+	view._process(3.0)
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.RUNNING)
+	assert_eq(view._mapper.source, GridInputMapper.PointerSource.NONE)
+	assert_true(view.board_input_enabled())
+
+
+func test_countdown_background_pauses_and_resumes() -> void:
+	var view := PuzzleGameView.new()
+	add_child_autofree(view)
+	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
+	view.start_selected_session()
+	assert_eq(view.countdown_digit(), 3)
+	view._process(0.500)
+	var mid := view._countdown_elapsed_ms
+	assert_gt(mid, 0.0)
+	view._app_active = false
+	view._process(2.0)
+	assert_eq(view._countdown_elapsed_ms, mid) # no catch-up
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.COUNTDOWN)
+	view._app_active = true
+	view._process(0.500)
+	assert_gt(view._countdown_elapsed_ms, mid)
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.COUNTDOWN)
+
+
+func test_opening_background_pauses_presentation() -> void:
+	var view := PuzzleGameView.new()
+	add_child_autofree(view)
+	view.select_obstacle_mode(PuzzleSession.ObstacleMode.ROCK)
+	view.start_selected_session()
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.OPENING)
+	assert_true(view.is_presentation_busy())
+	var phase_before := view._presenter.phase
+	var elapsed_before := view._presenter.phase_elapsed_ms
+	view._app_active = false
+	view._process(0.200)
+	assert_eq(view._presenter.phase, phase_before)
+	assert_eq(view._presenter.phase_elapsed_ms, elapsed_before)
+	assert_eq(view._session.remaining_ms(), 60000)
+	view._app_active = true
+	view._process(0.050)
+	assert_gte(view._presenter.phase_elapsed_ms, elapsed_before)
 
 
 func test_session_timer_runs_during_gravity_refill_respawn() -> void:
@@ -1294,10 +1390,11 @@ func test_session_timer_runs_during_gravity_refill_respawn() -> void:
 	add_child_autofree(view)
 	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
 	view.start_selected_session()
+	view.force_enter_running_for_tests()
 	view._skip_timer_frames = 0
 	view._drop_transition_spike = false
 	view._elapsed_accumulator_ms = 0.0
-	# Synthetic gravity presentation while IDLE.
+	# Synthetic gravity presentation while IDLE / RUNNING.
 	var before_orbs: Array = [[OrbType.Id.ORB_0], [-1], [-1]]
 	var before_obs: Array = [
 		[ObstacleType.Id.NONE],
@@ -1354,11 +1451,24 @@ func test_session_timer_runs_during_gravity_refill_respawn() -> void:
 func test_presentation_background_does_not_drain_session() -> void:
 	var view := PuzzleGameView.new()
 	add_child_autofree(view)
-	view.select_obstacle_mode(PuzzleSession.ObstacleMode.ROCK)
+	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
 	view.start_selected_session()
+	view.force_enter_running_for_tests()
 	view._skip_timer_frames = 0
 	view._drop_transition_spike = false
 	view._elapsed_accumulator_ms = 0.0
+	# Gameplay presentation busy.
+	var before_orbs: Array = [[OrbType.Id.ORB_0], [-1]]
+	var before_obs: Array = [[ObstacleType.Id.NONE], [ObstacleType.Id.NONE]]
+	var before_hp: Array = [[0], [0]]
+	var gmove := GravityMoveTrace.create_orb(Vector2i(0, 0), Vector2i(0, 1), OrbType.Id.ORB_0)
+	var step := CascadeStepTrace.create(0, [], [], [gmove], [])
+	var move := SessionMoveResult.resolved(
+		1, [], 0, 0, false, before_orbs, before_obs, before_hp, [step], []
+	)
+	view._presenter.begin(move)
+	view._presenter.advance(ResolutionPresenter.MATCH_MS)
+	view._presenter.advance(ResolutionPresenter.ROCK_HIT_MS)
 	assert_true(view.is_presentation_busy())
 	view._app_active = false
 	var rem := view._session.remaining_ms()
@@ -1372,7 +1482,6 @@ func test_presentation_background_does_not_drain_session() -> void:
 	var rem2 := view._session.remaining_ms()
 	view._process(0.500) # skipped frame
 	view._process(0.500) # skipped frame
-	# After skip frames, next process may tick — but not the 1.0s background time.
 	assert_gte(view._session.remaining_ms(), rem2 - 600)
 
 
@@ -1381,6 +1490,7 @@ func test_presentation_session_expiry_finishes_anim_no_new_input() -> void:
 	add_child_autofree(view)
 	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
 	view.start_selected_session()
+	view.force_enter_running_for_tests()
 	view._skip_timer_frames = 0
 	view._drop_transition_spike = false
 	view._elapsed_accumulator_ms = 0.0
@@ -1420,6 +1530,20 @@ func test_presentation_session_expiry_finishes_anim_no_new_input() -> void:
 	assert_eq(view._session.state(), PuzzleSession.State.SESSION_OVER)
 	assert_false(view.board_input_enabled())
 	assert_eq(view._session.remaining_ms(), 0)
+
+
+func test_countdown_overlay_label_reused() -> void:
+	var view := PuzzleGameView.new()
+	add_child_autofree(view)
+	assert_ne(view._countdown_overlay, null)
+	var id_before := view._countdown_overlay.get_instance_id()
+	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
+	view.start_selected_session()
+	view._process(0.5)
+	view._process(1.0)
+	view._process(1.0)
+	view._process(1.0)
+	assert_eq(view._countdown_overlay.get_instance_id(), id_before)
 
 
 func test_continuous_gravity_token_progress_and_no_static_dup() -> void:
@@ -1555,6 +1679,7 @@ func test_opening_off_has_no_rock_drop() -> void:
 	view.start_selected_session()
 	assert_true(view.has_playable_session())
 	assert_false(view.is_presentation_busy())
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.COUNTDOWN)
 	assert_eq(view._session.rock_count(), 0)
 	assert_eq(view._session.initial_rock_positions().size(), 0)
 
@@ -1564,16 +1689,18 @@ func test_restart_reuses_dev_seed_same_initial_rocks() -> void:
 	add_child_autofree(view)
 	view.select_obstacle_mode(PuzzleSession.ObstacleMode.ROCK)
 	view.start_selected_session()
-	# Drain opening presentation.
+	# Drain opening presentation into COUNTDOWN.
 	for _i in range(40):
-		if not view.is_presentation_busy():
+		if view.start_phase() != PuzzleGameView.StartPhase.OPENING:
 			break
 		view._process(0.05)
 	var first := view._session.initial_rock_positions()
 	view.restart_selected_session()
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.OPENING)
 	for _i in range(40):
-		if not view.is_presentation_busy():
+		if view.start_phase() != PuzzleGameView.StartPhase.OPENING:
 			break
 		view._process(0.05)
 	assert_eq(view._session.session_seed(), PuzzleGameView.DEV_SEED)
 	assert_eq(view._session.initial_rock_positions(), first)
+	assert_eq(view._session.remaining_ms(), 60000)

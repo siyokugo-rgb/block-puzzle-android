@@ -381,36 +381,43 @@ func test_ready_launch_helpers_and_start_flow() -> void:
 	assert_eq(view.selected_duration_ms(), 90000)
 	assert_true(view.is_awaiting_start())
 
-	# START creates session; timer full; Move inactive; board input enabled in IDLE.
-	# R-F baseline uses Obstacle OFF (ROCK default would play opening drop).
+	# START creates session; OFF skips rock opening → COUNTDOWN (pre-game).
+	# R-F baseline uses Obstacle OFF.
 	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
 	view.select_duration(60000)
 	view.start_selected_session()
 	assert_false(view.is_awaiting_start())
 	assert_true(view.has_playable_session())
-	assert_true(view.board_input_enabled())
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.COUNTDOWN)
+	assert_false(view.board_input_enabled())
 	assert_eq(view._session.state(), PuzzleSession.State.IDLE)
 	assert_eq(view._session.remaining_ms(), 60000)
 	assert_eq(view._session.score(), 0)
 	assert_false(view._session.has_active_move_timer())
 
-	# After START, Session ticks; Move still inactive while IDLE.
+	# Domain advance_time still works; UI clock gated until RUNNING.
 	view._session.advance_time(1000)
 	assert_eq(view._session.remaining_ms(), 59000)
 	assert_false(view._session.has_active_move_timer())
 
-	# Restart with selected duration resets score / Move / timer.
+	# Drain countdown → GO / RUNNING enables board input; Session full duration not UI-consumed in pre-game.
+	# (Domain call above already reduced remaining — restore for Restart check clarity.)
 	view.select_duration(45000)
 	assert_eq(view.selected_duration_ms(), 45000)
 	# Selection alone still does not replace session.
 	assert_eq(view._session.remaining_ms(), 59000)
 	view.restart_selected_session()
 	assert_true(view.has_playable_session())
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.COUNTDOWN)
 	assert_eq(view._session.remaining_ms(), 45000)
 	assert_eq(view._session.score(), 0)
 	assert_false(view._session.has_active_move_timer())
 	assert_eq(view._session.state(), PuzzleSession.State.IDLE)
+	assert_false(view.board_input_enabled())
+	view.force_enter_running_for_tests()
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.RUNNING)
 	assert_true(view.board_input_enabled())
+	assert_eq(view._session.remaining_ms(), 45000)
 
 
 func test_ready_rejects_invalid_duration_selection() -> void:
