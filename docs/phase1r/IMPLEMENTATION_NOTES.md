@@ -14,7 +14,7 @@
 | **Gate 1** | **PASS WITH FINDINGS** (human device eval; not market proof) |
 | **R-G** | Minimal ROCK Obstacle vertical slice — **COMPLETE** (#17) |
 | **Gate 2-A** | Game modes / Obstacle progression / evaluation contract — **docs** ([`GATE2_GAME_DESIGN.md`](GATE2_GAME_DESIGN.md)) |
-| **Gate 2-B** | Live ROCK evaluation (optional count compare) — **NOT STARTED** |
+| **Gate 2-B** | Live paired-seed ROCK eval (OFF / R2 / R3 / R4) — **NOT STARTED** |
 | Post R-F | Legacy Block Placement deletion decision |
 | Post Gate 2 | LOCK / SLIME / Rescue (not before) |
 
@@ -88,7 +88,7 @@ Exclusions at cell `(x,y)`:
 - If `x >= 2` and `board[x-1,y] == board[x-2,y]` (both orbs): exclude that type
 - If `y >= 2` and `board[x,y-1] == board[x,y-2]` (both orbs): exclude that type
 
-Fail-closed if candidates empty (no whole-board unbounded retry).  
+Fail-closed if candidates empty (no whole-board unbounded retry).
 No cascade cleanup. No score.
 
 DEV verification target: **6×6 / 5 OrbType** → no horizontal/vertical ≥3 after fill.
@@ -256,7 +256,7 @@ ERROR (not stable success):
 - detect / clear / gravity / refill failure
 - cascade guard exceeded (`is_guard_exceeded() == true`, `is_valid() == false`)
 
-Invalid inputs are rejected **before** the first detect (no mutation, no RNG).  
+Invalid inputs are rejected **before** the first detect (no mutation, no RNG).
 Mid-cascade ERROR does **not** roll back prior steps; the board is not treated as safely continuable.
 
 ### Out of R-D scope

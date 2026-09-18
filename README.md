@@ -2,7 +2,7 @@
 
 Phase 0 production baseline for Godot 4.7.2 Android + GUT + AdMob/UMP.
 
-Phase 1-A…1-C added a UI-free **Block Placement** domain (`BoardState` / tray / `GameSession`).  
+Phase 1-A…1-C added a UI-free **Block Placement** domain (`BoardState` / tray / `GameSession`).
 Phase 1-D (PR #8) attempted a playable placement slice — **SUPERSEDED** by product redesign (closed unmerged).
 
 **Phase 1-R** freezes the new **Route-Drag Match Puzzle** contracts (docs only): see [`docs/phase1r/README.md`](docs/phase1r/README.md).
@@ -32,8 +32,8 @@ Legacy Block Placement types remain on `main` until post–**R-F** cleanup. Phas
 | R-E PuzzleSession / timer / score | COMPLETE |
 | R-F Minimal Android playable Score Attack | COMPLETE |
 | R-G Minimal ROCK Obstacle vertical slice | COMPLETE — PR #17 merge-commit `635085f` |
-| Gate 2-A Game modes / Obstacle progression / eval contract | COMPLETE (docs) — see [`docs/phase1r/GATE2_GAME_DESIGN.md`](docs/phase1r/GATE2_GAME_DESIGN.md) |
-| Gate 2-B Live ROCK evaluation | NOT STARTED |
+| Gate 2-A Game modes / Obstacle progression / eval contract | COMPLETE (docs) — paired-seed Gate 2-B protocol in [`GATE2_GAME_DESIGN.md`](docs/phase1r/GATE2_GAME_DESIGN.md) |
+| Gate 2-B Live paired-seed ROCK evaluation (OFF/R2/R3/R4) | NOT STARTED |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).
 
@@ -267,7 +267,7 @@ Keep using the regression scene for future AdMob/UMP SDK re-checks (scenarios A�
 
 It still includes debug geography, runtime-only UMP test-device hash, and manual Update Consent / Request Banner / Reset / Privacy Options buttons.
 
-Native patch notes: `tooling/admob/native-patch/README.md`  
+Native patch notes: `tooling/admob/native-patch/README.md`
 API audit: `tooling/admob/UMP_API_AUDIT.md`
 
 ## GUT

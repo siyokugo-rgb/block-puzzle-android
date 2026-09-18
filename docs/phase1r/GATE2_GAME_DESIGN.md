@@ -3,7 +3,7 @@
 **Status:** Gate 2-A COMPLETE (docs / contracts only)
 **Base:** `main` @ `11da3c5616e3e2b0ad71d08d78c64a2edcb9bdc1` (R-G COMPLETE)
 **Scope of Gate 2-A:** documentation only. **No gameplay / Stage / Score / Obstacle code.**
-**Gate 2-B:** NOT STARTED (play evaluation; optional ROCK 2/3/4/5 DEV compare)
+**Gate 2-B:** NOT STARTED (paired-seed live eval; OFF / ROCK2 / ROCK3 / ROCK4)
 **Market proof:** NOT CLAIMED — Gate 2 is design hypothesis / internal usability / tuning only.
 
 Related: [`IMPLEMENTATION_NOTES.md`](IMPLEMENTATION_NOTES.md) (R-G ROCK slice), [`SCORE_TIMER_CONTRACT.md`](SCORE_TIMER_CONTRACT.md).
@@ -209,14 +209,18 @@ Picking multipliers without measuring that drop can force:
 
 ### 4.4 ROCK count evaluation candidates (Gate 2-B)
 
-Evaluate ROCK pressure candidates (docs / optional later DEV):
+Gate 2-B primary conditions (docs / optional later DEV):
 
-- Initial ROCK **2**
-- Initial ROCK **3** (current baseline)
-- Initial ROCK **4**
-- **5** if needed
+- Obstacle **OFF** (control)
+- Initial ROCK **2** (`initial = target = 2`)
+- Initial ROCK **3** (baseline; `initial = target = 3`)
+- Initial ROCK **4** (`initial = target = 4`)
 
-**No code change in Gate 2-A.**
+**ROCK 5** is an optional post-result extension — **not** in the first comparison set.
+
+Must keep **initial count = target count** per condition (no mid-session ease).
+
+Comparison method: **paired-seed protocol** (§9). **No code change in Gate 2-A.**
 
 ### 4.5 Difficulty profile (future design principle)
 
@@ -307,34 +311,194 @@ Gate 2 is **not** market-success proof. User/self play ≠ market evidence.
 
 | Slice | Scope | Status |
 | --- | --- | --- |
-| **Gate 2-A** | Docs: modes, progression, risk/reward, ROCK baseline, eval method | **COMPLETE** (this document) |
-| **Gate 2-B** | Live play eval; optional ROCK 2/3/4/5 minimal DEV | **NOT STARTED** |
+| **Gate 2-A** | Docs: modes, progression, risk/reward, ROCK baseline, **paired-seed eval protocol** | **COMPLETE** (this document) |
+| **Gate 2-B** | Live paired-seed play: OFF / ROCK2 / ROCK3 / ROCK4 | **NOT STARTED** |
 
-### 9.1 Gate 2-B data candidates (minimum)
+---
 
-Record when running Gate 2-B:
+## 9A. Gate 2-B Paired-Seed Evaluation Protocol
 
-- condition
-- session seed
-- initial ROCK count
-- final score
-- ROCK breaks
-- intentionally targeted ROCK?
-- planned first move during Countdown?
-- did ROCK force a route change?
-- stress / frustration
-- was 2s Move too tight?
+### 9A.1 Why paired seeds
+
+Normal START / Restart uses a **random Session seed**. Comparing different seeds across conditions mixes:
+
+- Orb initial board
+- ROCK placement
+- refill sequence
+- Obstacle RNG stream
+
+…into the ROCK-count effect. Gate 2-B cannot separate “ROCK pressure” from “lucky/unlucky board.”
+
+**Principle:** reuse the **same Session seed** across conditions; change **condition only**.
+
+```
+Seed A: OFF, ROCK2, ROCK3, ROCK4
+Seed B: OFF, ROCK2, ROCK3, ROCK4
+…
+```
+
+Condition **execution order** must **vary by seed** (see §9A.6) — do not always run OFF→R2→R3→R4.
+
+### 9A.2 Seed count (Phase 1 → optional expand)
+
+| Phase | Seeds | Conditions | Sessions |
+| --- | --- | --- | --- |
+| First Gate 2-B | **5** fixed seeds | 4 | **20** |
+| Expand if ambiguous | up to **10** | 4 | up to **40** |
+
+Do not start with a huge measurement campaign.
+
+**Expand 5 → 10 when** (examples):
+
+- condition gaps are inconsistent across seeds
+- Score variance is large
+- ROCK2/3/4 feel ambiguous
+- 1–2 seeds alone reverse the trend
+
+If trends are clear after 5 seeds, **do not** require 10. Gate 2 is an **internal tuning gate**, not a statistics study.
+
+### 9A.3 Seed selection
+
+- Gate 2-B seeds are **explicit fixed integers**, recorded in docs/notes when Gate 2-B starts
+- Once a comparison set is adopted: **no cherry-picking / swapping seeds after seeing results**
+
+### 9A.4 Fixed session variables (all conditions)
+
+| Variable | Value |
+| --- | --- |
+| Board | 6×6 |
+| OrbTypes | 5 |
+| Session | 60000 ms |
+| Move | 2000 ms |
+| ROCK HP | 2 |
+| Countdown | 3 s |
+| FPS target | 60 |
+| Score formula | current raw / base Score |
+| Score multiplier | **NONE** |
+| Difficulty bonus | **NONE** |
+| New Obstacle types | **NONE** |
+
+Primary independent variable: **ROCK pressure / count**.
+
+### 9A.5 Conditions
+
+| Id | Condition | initial ROCK | target ROCK |
+| --- | --- | --- | --- |
+| A | Obstacle **OFF** | 0 | 0 |
+| B | **ROCK2** | **2** | **2** |
+| C | **ROCK3** (baseline) | **3** | **3** |
+| D | **ROCK4** | **4** | **4** |
+
+Optional later: **ROCK5** only after first-set results — not in the initial 4.
+
+**Forbidden:** `initial 4` + `target 3` (or any profile that silently eases mid-session). Respawn pressure stays on the **same difficulty profile**.
+
+ROCK rules held constant except count:
+
+- HP2, impassable, not grabable
+- board-wide initial random
+- gameplay respawn top-row
+- 1 valid-move grace; max 1 respawn/move
+- falling gravity; 2-hit break
+
+**OFF** remains DEV / QA / Gate **control** — not a product-normal candidate. High OFF Score must **not** alone conclude “delete Obstacles.” Measure impact on route judgment, Score, frustration, replayability.
+
+### 9A.6 Condition order (order-effect control)
+
+Do **not** use the same order every seed (e.g. always OFF → R2 → R3 → R4).
+
+Vary order per seed so the same condition is not always first/last. Full factorial counterbalance is **not** required.
+
+Example pattern (illustrative):
+
+| Seed | Order |
+| --- | --- |
+| A | OFF → R2 → R3 → R4 |
+| B | R4 → R3 → R2 → OFF |
+| C | R2 → OFF → R4 → R3 |
+| D | R3 → R4 → OFF → R2 |
+| E | R2 → R3 → R4 → OFF |
+
+Controls: learning, fatigue, focus drift.
+
+### 9A.7 Valid vs forbidden comparisons
+
+**Unit of comparison:** same-seed condition deltas, then trends across seeds.
+
+**Forbidden:** judging ROCK4 “worse” from Seed A ROCK2 Score vs Seed B ROCK4 Score alone (cross-seed, cross-condition raw mix).
+
+### 9A.8 Score recording
+
+Record **raw / base Score only**. No difficulty multiplier during Gate 2-B.
+
+Reason: measure how Obstacle pressure itself moves Base Score **before** designing Score Attack multipliers.
+
+After Gate 2-B, use Base Score drop trends to design multipliers that:
+
+- compensate difficulty without forcing high-difficulty-only or low-difficulty-only metas
+
+Concrete multipliers remain **NOT FIXED** in Gate 2-A.
+
+### 9A.9 Per-session minimum record fields
+
+| Field | Notes |
+| --- | --- |
+| trial id | unique row id |
+| session seed | fixed paired seed |
+| condition | OFF / ROCK2 / ROCK3 / ROCK4 |
+| initial ROCK count | |
+| target ROCK count | must match initial for ROCK conditions |
+| final raw/base score | no multiplier |
+| resolved move count | separates lower Score vs fewer moves vs break investment |
+| ROCK breaks | avoid-only vs intentional targeting |
+| intentionally targeted ROCK? | YES / NO / SOMETIMES |
+| ROCK forced route change? | YES / NO |
+| planned first move during Countdown? | YES / NO |
+| Move 2.0s felt too tight? | TOO TIGHT / OK / TOO LOOSE |
+| frustration | LOW / MEDIUM / HIGH |
+| notes / anomaly | free text |
+
+Subjective fields are **internal playtest**, not market proof. Do not over-precision score them.
+
+### 9A.10 Optional future telemetry (Gate 2-B DEV only; not Gate 2-A)
+
+If cheap during minimal DEV: move count, cleared cells, cascade steps, ROCK hits, ROCK breaks.
+**No** large telemetry framework in Gate 2-A. **No implementation here.**
+
+### 9A.11 Interpretation (not Score-max alone)
+
+Watch the balance:
+
+ROCK ↑ → route thinking ↑ / replayability ↑
+vs
+Score ↓ / frustration ↑ / move count ↓
+
+### 9A.12 Links to Stage Clear / Score Attack
+
+Gate 2-B ROCK pressure results inform both modes later, e.g. candidates:
+
+- ROCK2 → early Stage pressure
+- ROCK3 → mid / baseline
+- ROCK4 → high pressure
+
+Do **not** production-fix Stage layouts before Gate 2-B ends.
+
+### 9A.13 Market proof
+
+Paired-seed Gate 2-B still does **not** prove market demand or retention. It confirms gameplay hypothesis, internal usability, and relative tuning only.
 
 ---
 
 ## 10. Outcome labels (not binary only)
 
+Paired-seed evidence required for these labels:
+
 | Label | Meaning |
 | --- | --- |
-| **PASS** | ROCK creates clear route judgment; stress acceptable; may proceed to next Obstacle design |
-| **PASS WITH FINDINGS** | Direction valid; tune count / respawn / score incentive / etc. |
-| **FIX FIRST** | Concept valid; current values/frequency have clear problems |
-| **REDESIGN** | ROCK adds little judgment; mostly unfair pressure |
+| **PASS** | Across multiple paired seeds, ROCK clearly increases route judgment; frustration acceptable |
+| **PASS WITH FINDINGS** | Obstacle direction valid; tune count / target / respawn / score incentive / etc. |
+| **FIX FIRST** | Concept valid; current pressure values clearly inappropriate |
+| **REDESIGN** | Even under paired comparison, ROCK barely adds route judgment; mostly soft-lock / unfairness |
 
 ---
 
@@ -401,4 +565,5 @@ No implementation of:
 - [x] Gate 2 evaluation fields
 - [x] PASS / FIX / REDESIGN criteria
 - [x] future Validator requirement
+- [x] Gate 2-B paired-seed protocol (same seed × conditions; order variation; raw Score; initial=target; 5→10 rule)
 - [x] no gameplay implementation in this phase
