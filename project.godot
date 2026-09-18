@@ -11,11 +11,12 @@ config_version=5
 [application]
 
 config/name="Block Puzzle"
-config/description="Phase R-F: Score Attack playable slice on Phase 0-F AdMob/UMP baseline."
-config/version="0.0.1-phase-rf"
+config/description="Phase R-G: Score Attack falling ROCK on Phase 0-F AdMob/UMP baseline."
+config/version="0.0.1-phase-rg"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
+run/max_fps=60
 
 [display]
 

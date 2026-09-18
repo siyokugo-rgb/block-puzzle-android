@@ -155,14 +155,18 @@ UI may display seconds; domain remaining time is always ms.
 - `IDLE`
 - `ROUTE_DRAG`
 
+including while the UI `ResolutionPresenter` is busy (match / rock hit / gravity / refill / respawn / opening). Domain state is typically `IDLE` during that playback.
+
 **Session Timer** does not advance in:
 
-- `RESOLVING`
+- Domain `RESOLVING` (synchronous resolve inside one call — not sticky UI presentation)
 - `SESSION_OVER`
 - `ERROR`
 - `INVALID`
+- Pre-session READY (no `PuzzleSession` yet)
+- App background / focus out (UI adapter; no catch-up on focus in)
 
-`RESOLVING` duration is **not** subtracted from the limit (timer paused for the whole cascade).
+Domain `RESOLVING` duration is negligible (sync). **UI presentation duration intentionally consumes Session Timer** (Score Attack tempo). Move Timer stays `ROUTE_DRAG`-only.
 
 ### 3.3b Dual Timer — Move Timer (R-F gameplay lock)
 
@@ -173,7 +177,7 @@ UI may display seconds; domain remaining time is always ms.
 | Idle display | Domain reports inactive (`move_remaining_ms() == 0`); UI may show `---` |
 | Tick | Same `elapsed_ms` deducted from Session + Move during `ROUTE_DRAG` |
 | Hold | Same-cell / pointer-stopped still consumes Move |
-| Pause | `RESOLVING` / `SESSION_OVER` / `ERROR` / `INVALID` — both timers paused |
+| Pause | Domain `RESOLVING` / `SESSION_OVER` / `ERROR` / `INVALID` — both paused at `advance_time`. UI presentation (presenter busy while `IDLE`) does **not** pause Session Timer. |
 | Move → 0, swaps ≥ 1 | Forced release → resolve → Score → `IDLE` if Session > 0 |
 | Move → 0, swaps == 0 | Cancel-equivalent; no cascade; `IDLE` if Session > 0 |
 | Session → 0 during drag | Session expiry wins (even if Move also 0 same tick); one forced release |

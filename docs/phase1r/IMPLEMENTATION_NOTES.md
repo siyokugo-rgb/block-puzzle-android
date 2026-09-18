@@ -10,10 +10,12 @@
 | **R-D** | GravityResolver / refill / CascadeResolver / finite safety guard |
 | **R-E0** | Provisional Score / Timer / Session-state contracts (**docs only**; gate before R-E) |
 | **R-E** | PuzzleSession / timer / mid-drag forced release / provisional Score |
-| **R-F** | Minimal Puzzle UI / Android touch / playable Score Attack / 45·60·90 device comparison |
-| **Gate 1** | After R-F Android playable COMPLETE |
+| **R-F** | Minimal Puzzle UI / Android touch / playable Score Attack / Dual Timer — **MERGED** (#16) |
+| **Gate 1** | **PASS WITH FINDINGS** (human device eval; not market proof) |
+| **R-G** | Minimal ROCK Obstacle vertical slice (Gate 2 A/B) |
+| **Gate 2** | After R-G Android COMPLETE — OFF vs ROCK comparison |
 | Post R-F | Legacy Block Placement deletion decision |
-| Post Gate 1 | ROCK (then LOCK / SLIME / …) |
+| Post Gate 2 | LOCK / SLIME / Rescue (not before) |
 
 ## Paths
 
@@ -191,7 +193,7 @@ DEV verification target: **6×6 / 5 OrbType** → no horizontal/vertical ≥3 af
 - Relative vertical order of orbs in a column is **preserved**
 - No orb duplication / loss / cross-column moves
 - Null / invalid board → `apply` returns `false`, no mutation
-- Obstacles / ROCK segment gravity are **out of scope** (post Gate 1)
+- Obstacles / falling ROCK gravity: delivered in **R-G** (see Phase R-G)
 
 ### Refill order — FIXED
 
@@ -287,9 +289,12 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 - Domain SoT unit: **integer milliseconds** (not float seconds)
 - DEV default: **60000** ms; comparison set: **45000 / 60000 / 90000** ms
 - `advance_time(elapsed_ms)`: `>0` applies; `0` no-op; `<0` reject/no-op
-- Ticks in `IDLE` / `ROUTE_DRAG` only; paused in `RESOLVING` / `SESSION_OVER` / `ERROR` / `INVALID`
+- Ticks in `IDLE` / `ROUTE_DRAG` only at the **domain** `advance_time` gate; paused in domain `RESOLVING` / `SESSION_OVER` / `ERROR` / `INVALID`
+- **UI PRESENTING** (ResolutionPresenter busy) is **not** domain `RESOLVING`: after START, Session Timer keeps running during match/hit/gravity/refill/respawn/opening playback
+- Move Timer remains `ROUTE_DRAG`-only (presentation never invents Move drain)
 - Overshoot clamps to 0; expiry handled once
 - Mid-drag expiry: forced release if swaps≥1 (no rollback); score on stable cascade; then `SESSION_OVER`
+- Mid-presentation Session expiry → `SESSION_OVER`, finish current anim, block new input; no double resolve / score recompute
 
 ### Session states (R-E target)
 
@@ -333,15 +338,17 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 
 ### Timer
 
-- `advance_time(elapsed_ms)` per R-E0; ticks only `IDLE`/`ROUTE_DRAG`
-- Mid-drag expiry forced release; RESOLVING is sync domain pause (no tick during resolve)
+- `advance_time(elapsed_ms)` per R-E0; ticks only `IDLE`/`ROUTE_DRAG` (domain gate)
+- Mid-drag expiry forced release; domain `RESOLVING` is sync and does not sticky-pause UI presentation time
 - **R-F Dual Timer:** Session Timer + per-drag Move Timer (`MOVE_DURATION_MS = 2000` DEV)
   - `IDLE`: Session ticks; Move inactive (`move_remaining_ms() == 0`)
   - `ROUTE_DRAG`: both deduct the same `elapsed_ms` (including same-cell hold)
-  - `RESOLVING` / `SESSION_OVER` / `ERROR` / `INVALID`: both paused
+  - Domain `RESOLVING` / `SESSION_OVER` / `ERROR` / `INVALID`: both paused at `advance_time`
+  - **UI presentation** (after resolve returns to `IDLE`): Session Timer continues; Move inactive; input blocked while busy
   - Move expiry (`swap_count >= 1`): forced release → resolve → Score → `IDLE` if Session remains
   - Move expiry (`swap_count == 0`): cancel-equivalent → no cascade → `IDLE` if Session remains
   - Session expiry during drag wins over Move (including simultaneous 0); one forced release; final `SESSION_OVER`
+  - Session expiry during presentation: `SESSION_OVER`, anim may finish, no new moves
   - Next successful `begin_drag` resets Move to 2000 ms
   - SoT: `PuzzleSession` (`remaining_ms`, `move_remaining_ms`, expiry precedence, forced release)
 
@@ -374,7 +381,9 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 - **No per-frame gameplay cap** — active gameplay elapsed is never discarded
 - Pause when app/window unfocused (no catch-up on resume)
 - Startup / focus-return: skip a few frames, reset remainder, and drop at most one abnormal transition spike (>1s)
-- Domain `RESOLVING` pauses **both** Session and Move timers
+- Domain `RESOLVING` is synchronous inside `advance_time` / release — not a sticky UI pause
+- **UI PRESENTING:** Session Timer **keeps running** after START (Score Attack tempo); Move Timer inactive; input blocked
+- Presenter advances before Session clock in `_process`; presentation busy must not early-return past the Session clock
 
 ### DEV HUD
 
@@ -394,10 +403,135 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 
 ### Status
 
-- **VERIFY FIRST / FIX FIRST** — Move 2.0s + READY START; do not merge Draft PR #16; do not start R-G / Gate 1 until device re-verify
+- **COMPLETE** — PR #16 merge-commit to `main` (`b9ed25c`); feature HEAD `f2d30f0`
+- Gate 1: **PASS WITH FINDINGS** (Move 2.0s / Session 60s baseline accepted as Gate 1 DEV, not production final)
+- Findings: replayability UNPROVEN; score agency WEAK; obstacle hypothesis UNVERIFIED
 
 ### Out of R-F scope
 
 - ROCK / Save / Best Score / production art / complex animation / audio
-- R-G / Gate 1 start
-- Production-final Move duration pick (2.0s is Gate 1 DEV candidate)
+- Production-final Move duration pick (2.0s remains Gate 1 DEV baseline)
+
+---
+
+## Phase R-G — Minimal ROCK Obstacle Vertical Slice
+
+### Purpose
+
+Hypothesis check for Gate 2: does a **falling** impassable ROCK (top→down gravity token)
+improve route thinking / replayability without becoming pure annoyance?
+**Not** a feature-complete obstacle framework. Not a fixed terrain wall.
+
+### Domain
+
+- `ObstacleType`: `NONE` / `ROCK` only (`scripts/puzzle/obstacle_type.gd`)
+  — durability is **not** a separate ObstacleType
+- `PuzzleCell`: optional orb + optional obstacle + `_obstacle_hp`; **ROCK ⇒ no orb**
+- Initial ROCK: **HP = 2** (Gate 2 DEV; not production final)
+- `PuzzleBoard`: `set_rock` / `place_rock_with_hp` / `move_occupant` / `clear_obstacle` /
+  `rock_hp_at` / `damage_rock` / snapshots / `rock_count`
+  — existing ROCK → `set_rock` fails (no silent HP heal)
+  — gravity moves use `place_rock_with_hp` / `move_occupant` (HP preserved; never `set_rock`)
+- Damage unit: **max 1 hit per ROCK per cascade step**
+  (multi-adjacent matched cells in the same step still deal 1 damage)
+- HP is **per-cell independent** (Test A: only adjacent ROCK takes damage)
+- Cross-cascade-step damage in the same move is legal (step1 HP2→1, step2 HP1→0)
+- Cascade order: detect → unique adjacent ROCK hits → destroy only HP=0 →
+  clear matched orbs → **mixed occupant gravity** → refill skips living ROCK
+- `GravityResolver`: per-column compact of Orb **and** ROCK together; top→bottom
+  relative order preserved; no overtake; downward-only; same column only
+- `GravityMoveTrace.Kind`: `ORB` | `ROCK` (orb_id or rock_hp); no upward / horizontal moves
+- Neutral `CascadeStepTrace` (matched / rock_hits / gravity_moves / refills) for UI playback
+- HP1 / HP2: both impassable, both gravity-affected falling tokens, both refill-skipped
+- Score formula unchanged (no ROCK hit / break bonus)
+
+### ROCK respawn (Gate 2 DEV)
+
+- `TARGET_ROCK_COUNT = 3`
+- Destroying rocks queues `_pending_rock_respawns`; **no spawn on the destroy move**
+- Next valid move (`swap_count >= 1`, stable resolve, not SESSION_OVER/ERROR): spawn **at most 1**
+- Obstacle RNG: `obstacle_seed = session_seed XOR 0x524F434B` (`OBSTACLE_RNG_SEED_XOR`)
+  — independent of `OrbGenerator` stream
+- Candidate: **top row only** (`y == 0`), no obstacle (orb may be present);
+  replace with ROCK HP=2; mid-board spawn forbidden
+- No eligible top cell → keep pending, no ERROR; retry next valid move
+- **Gameplay respawn stays top-row drop** (distinct from Initial ROCK board-wide placement)
+
+### Initial ROCK (standard ROCK mode)
+
+- Count = 3, HP = 2; sample **3 unique cells from the full board** (`width × height`)
+  via Obstacle RNG (`pick_unique_cells`); placement order sorted **y asc, then x asc**
+- Same column may hold multiple ROCKs; same cell is forbidden; no fairness region constraints
+- Flow: OrbGenerator match-stable fill → Obstacle RNG pick → replace Orbs with ROCK HP2 →
+  MatchResolver re-check (fail-closed if invalid / matches)
+- Does **not** consume Orb RNG; `obstacle_seed = session_seed XOR 0x524F434B` continues into respawn
+- Same explicit session seed → same Orb board + same initial ROCK positions + same later Obstacle RNG
+
+### Presentation
+
+- `ResolutionPresenter` plays domain traces only
+  (match → rock hit → clear → gravity Orb+ROCK downward → refill from above → respawn drop)
+- Fall motion: smoothstep `_ease_fall` + distance-based duration
+  (`FALL_BASE_MS`/`FALL_PER_CELL_MS`, clamped `FALL_MIN_MS`..`FALL_MAX_MS`)
+- Gravity / refill / respawn: **continuous moving-token** layer (trace SoT → pixel lerp);
+  static layer suppresses sources/targets until phase-end commit (no teleport / double-draw)
+- Gravity / refill / respawn visuals are **top → down only** (no horizontal / upward / overshoot)
+- DEV A/B: Obstacle **OFF (DEV/QA/Gate baseline)** | **ROCK** (product-standard candidate, default)
+- ROCK: standard gameplay candidate for Gate 2 evaluation
+- Obstacle OFF: control / baseline only — not the intended product-normal mode
+- Normal START / Restart: **new Session seed** each round (`_session_seed_rng`); PuzzleSession stays deterministic per seed
+- Explicit `start_session_with_seed(seed)` / `create_score_attack(..., seed)` for tests / Gate / reproduction
+- **START board opening (ROCK ON and OFF):** presentation-only column settle of final Orb/ROCK
+  occupants from above (`BOARD_OPENING`, ~450ms parallel drop). Same-column relative order preserved —
+  ROCK must not pierce / overtake Orbs (and vice versa). Domain already holds the final board.
+- **Pre-game:** OPENING + 3·2·1 countdown (`PRESTART_COUNTDOWN_MS=3000`) — Session Timer **frozen**; board input blocked
+- **GO!** (`GO_OVERLAY_MS=400`, non-blocking): Session Timer **starts**; input enabled; mapper cleared (no touch carry-over)
+- After RUNNING: `presentation_busy` blocks **input** only; Session Timer still runs (not a gameplay SoT)
+- Render target: **60fps** (`application/run/max_fps=60` + `Engine.max_fps`); animations stay delta_ms-based
+- DEV-only FPS overlay (`SHOW_DEV_FPS`, ~500ms sample) — not production UI
+- Countdown overlay Label is created once and text-updated (not rebuilt each frame)
+- DEV seed HUD shows `RANDOM` on READY and the live Session seed after START
+
+### DEV A/B
+
+- READY: Obstacle **OFF (DEV)** | **ROCK** (default ROCK = product-standard candidate)
+- ROCK initial layout (Gate 2 DEV): **3 unique cells from the full 6×6 board** via Obstacle RNG
+  (`pick_unique_cells`, sorted y then x for placement); all HP=2
+  — same session seed → same positions; normal Restart uses a **new** Session seed
+  — Initial = board-wide random; gameplay respawn remains top-row drop
+- Explicit seed 42 remains available for tests / Gate comparison
+- Session 60s / Move 2.0s / 6×6 / 5 OrbTypes
+- HUD: `ROCK: N` remaining count; cells draw gray + `"R2"` / `"R1"`
+- DEV seed line: live Session seed (not fixed 42 on normal play)
+- DEV FPS: corner `FPS` / `Frame ms` (not production)
+
+### Product direction (docs)
+
+- Intended core: short Score Attack + Move Timer + **dynamic Obstacles** that shape route decisions
+- Obstacle OFF is a measurement baseline, not the finished product mode
+- If ROCK underperforms Gate 2, prefer Obstacle design iteration over deleting Obstacles
+- Do **not** start LOCK / SLIME / Rescue before Gate 2
+
+### Future — SLIME (docs only; not implemented)
+
+Hypothesis only — do **not** add `ObstacleType.SLIME` / GDScript / tests in R-G:
+
+- Does **not** steal Move Timer budget
+- Not a hard impassable wall like ROCK
+- Route traversal candidate: may convert the carried orb’s color (exact rule undecided)
+- Intended as a route-decision tool, not pure annoyance
+- Deferred until after R-G / Gate 2
+
+### Status
+
+- **FIX FIRST** (board-wide Initial ROCK + non-piercing board opening) → **VERIFY FIRST** after APK;
+  **Gate 2 NOT STARTED**
+- Note for Gate 2 / Score redesign: long cascade presentation consumes Score Attack time by design (after GO)
+- Do **not** merge R-G to main until Gate 2 human comparison
+- Do **not** start LOCK / SLIME / Rescue
+
+### Out of R-G scope
+
+- LOCK / SLIME / Rescue / Stage Mode / Score redesign / production art
+- Large obstacle event framework
+- Production-final ROCK durability

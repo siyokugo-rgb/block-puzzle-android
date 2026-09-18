@@ -19,9 +19,26 @@ const SCORE_MAX := 9223372036854775807
 ## Per-drag move budget (Phase R-F Gate 1 DEV value; not production final).
 const MOVE_DURATION_MS := 2000
 
+## Gate 2 DEV: Obstacle OFF keeps R-F baseline; ROCK uses seeded random top-row rocks.
+enum ObstacleMode {
+	OFF,
+	ROCK,
+}
+
+## Gate 2 DEV target live ROCK count (initial + respawn toward this).
+const TARGET_ROCK_COUNT := 3
+## Initial ROCK count at START (top-row unique columns via Obstacle RNG).
+const INITIAL_ROCK_COUNT := 3
+
+## Obstacle RNG seed derivation (independent of OrbGenerator stream).
+## Fixed: obstacle_seed = session_seed XOR OBSTACLE_RNG_SEED_XOR
+## Documented in IMPLEMENTATION_NOTES — do not change without test updates.
+const OBSTACLE_RNG_SEED_XOR := 0x524F434B # ASCII 'ROCK'
+
 var _state: State = State.INVALID
 var _board: PuzzleBoard = null
 var _generator: OrbGenerator = null
+var _obstacle_rng: RandomNumberGenerator = null
 var _route: DragRoute = null
 var _remaining_ms: int = 0
 var _move_remaining_ms: int = 0
@@ -29,19 +46,28 @@ var _score: int = 0
 var _max_cascade_steps: int = CascadeResolver.MAX_CASCADE_STEPS
 var _expiry_handled: bool = false
 var _last_end_reason: String = ""
+var _obstacle_mode: ObstacleMode = ObstacleMode.OFF
+var _pending_rock_respawns: int = 0
+var _respawn_armed: bool = false
+var _session_seed: int = 0
+var _last_move_result: SessionMoveResult = null
+## Sorted top-row ROCK positions chosen at START (empty when OFF).
+var _initial_rock_positions: Array[Vector2i] = []
 
 
 ## Create a Score Attack session. Uses one OrbGenerator for fill + later cascade refill.
 ## Optional max_cascade_steps is an internal safety seam (default 128); not a gameplay flag.
+## obstacle_mode: OFF = DEV/QA/Gate baseline; ROCK = board-wide seeded random rocks after stable fill.
 static func create_score_attack(
 	width: int,
 	height: int,
 	seed_value: int,
 	duration_ms: int,
-	max_cascade_steps: int = CascadeResolver.MAX_CASCADE_STEPS
+	max_cascade_steps: int = CascadeResolver.MAX_CASCADE_STEPS,
+	obstacle_mode: int = ObstacleMode.OFF
 ) -> PuzzleSession:
 	var session := PuzzleSession.new()
-	session._build(width, height, seed_value, duration_ms, max_cascade_steps)
+	session._build(width, height, seed_value, duration_ms, max_cascade_steps, obstacle_mode)
 	return session
 
 
@@ -50,11 +76,13 @@ func _build(
 	height: int,
 	seed_value: int,
 	duration_ms: int,
-	max_cascade_steps: int
+	max_cascade_steps: int,
+	obstacle_mode: int
 ) -> void:
 	_state = State.INVALID
 	_board = null
 	_generator = null
+	_obstacle_rng = null
 	_route = null
 	_remaining_ms = 0
 	_move_remaining_ms = 0
@@ -62,12 +90,20 @@ func _build(
 	_max_cascade_steps = max_cascade_steps
 	_expiry_handled = false
 	_last_end_reason = ""
+	_obstacle_mode = ObstacleMode.OFF
+	_pending_rock_respawns = 0
+	_respawn_armed = false
+	_session_seed = seed_value
+	_last_move_result = null
+	_initial_rock_positions.clear()
 
 	if width <= 0 or height <= 0:
 		return
 	if duration_ms <= 0:
 		return
 	if max_cascade_steps < 0:
+		return
+	if obstacle_mode != ObstacleMode.OFF and obstacle_mode != ObstacleMode.ROCK:
 		return
 
 	var board := PuzzleBoard.create(width, height)
@@ -83,12 +119,105 @@ func _build(
 	if not opening.is_valid() or opening.has_matches():
 		return
 
+	# Obstacle RNG is independent of OrbGenerator. Created before initial ROCK pick so
+	# the same stream continues into respawn (no reseed).
+	var obstacle_rng := RandomNumberGenerator.new()
+	obstacle_rng.seed = derive_obstacle_rng_seed(seed_value)
+	var initial_rocks: Array[Vector2i] = []
+
+	if obstacle_mode == ObstacleMode.ROCK:
+		initial_rocks = _place_initial_rocks(board, obstacle_rng, INITIAL_ROCK_COUNT)
+		if initial_rocks.is_empty():
+			return
+		# Replacing orbs with ROCK cannot create matches (ROCK has no orb).
+		var after_rocks := MatchResolver.detect(board)
+		if not after_rocks.is_valid() or after_rocks.has_matches():
+			return
+
 	_board = board
 	_generator = generator
 	_remaining_ms = duration_ms
 	_move_remaining_ms = 0
 	_score = 0
+	_obstacle_mode = obstacle_mode as ObstacleMode
+	_pending_rock_respawns = 0
+	_respawn_armed = false
+	_obstacle_rng = obstacle_rng
+	_initial_rock_positions = initial_rocks
 	_state = State.IDLE
+
+
+## Fixed XOR derivation — must stay stable for deterministic ROCK spawn sequences.
+static func derive_obstacle_rng_seed(session_seed: int) -> int:
+	return session_seed ^ OBSTACLE_RNG_SEED_XOR
+
+
+## Without-replacement column sample via Obstacle RNG. Sorted ascending.
+## Kept for utility / legacy tests; initial ROCK uses pick_unique_cells.
+static func pick_unique_columns(
+	rng: RandomNumberGenerator,
+	width: int,
+	count: int
+) -> Array[int]:
+	var out: Array[int] = []
+	if rng == null or width <= 0 or count <= 0 or count > width:
+		return out
+	var candidates: Array[int] = []
+	for x in range(width):
+		candidates.append(x)
+	for _i in range(count):
+		var idx := rng.randi_range(0, candidates.size() - 1)
+		out.append(candidates[idx])
+		candidates.remove_at(idx)
+	out.sort()
+	return out
+
+
+## Without-replacement board-wide cell sample. Sorted y asc, then x asc (no extra RNG).
+static func pick_unique_cells(
+	rng: RandomNumberGenerator,
+	width: int,
+	height: int,
+	count: int
+) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if rng == null or width <= 0 or height <= 0 or count <= 0:
+		return out
+	if count > width * height:
+		return out
+	var candidates: Array[Vector2i] = []
+	for y in range(height):
+		for x in range(width):
+			candidates.append(Vector2i(x, y))
+	for _i in range(count):
+		var idx := rng.randi_range(0, candidates.size() - 1)
+		out.append(candidates[idx])
+		candidates.remove_at(idx)
+	out.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		if a.y != b.y:
+			return a.y < b.y
+		return a.x < b.x
+	)
+	return out
+
+
+## Place `count` R2 rocks on unique board-wide cells using Obstacle RNG. Empty on failure.
+static func _place_initial_rocks(
+	board: PuzzleBoard,
+	rng: RandomNumberGenerator,
+	count: int
+) -> Array[Vector2i]:
+	var placed: Array[Vector2i] = []
+	if board == null or not board.is_valid() or rng == null:
+		return placed
+	var cells := pick_unique_cells(rng, board.width(), board.height(), count)
+	if cells.size() != count:
+		return placed
+	for pos in cells:
+		if not board.set_rock(pos):
+			return []
+		placed.append(pos)
+	return placed
 
 
 # --- Read API ---
@@ -144,6 +273,72 @@ func board_snapshot() -> Array:
 	if _board == null or not _board.is_valid():
 		return []
 	return _board.snapshot_orb_ids()
+
+
+func obstacle_snapshot() -> Array:
+	if _board == null or not _board.is_valid():
+		return []
+	return _board.snapshot_obstacle_types()
+
+
+func obstacle_hp_snapshot() -> Array:
+	if _board == null or not _board.is_valid():
+		return []
+	return _board.snapshot_obstacle_hp()
+
+
+func session_seed() -> int:
+	return _session_seed
+
+
+## Defensive copy of START-time top-row ROCK positions (sorted by x). Empty when OFF.
+func initial_rock_positions() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for pos in _initial_rock_positions:
+		out.append(pos)
+	return out
+
+
+func obstacle_mode() -> ObstacleMode:
+	return _obstacle_mode
+
+
+func rock_count() -> int:
+	if _board == null or not _board.is_valid():
+		return 0
+	return _board.rock_count()
+
+
+func is_rock_at(pos: Vector2i) -> bool:
+	if _board == null or not _board.is_valid():
+		return false
+	return _board.is_rock(pos)
+
+
+## ROCK HP at pos (1 or 2), or 0 if not ROCK / invalid.
+func rock_hp_at(pos: Vector2i) -> int:
+	if _board == null or not _board.is_valid():
+		return 0
+	return _board.rock_hp_at(pos)
+
+
+func pending_rock_respawns() -> int:
+	return _pending_rock_respawns
+
+
+func respawn_armed() -> bool:
+	return _respawn_armed
+
+
+## Last resolve/no-resolve move packet (presentation). Null until first release.
+func last_move_result() -> SessionMoveResult:
+	return _last_move_result
+
+
+func consume_last_move_result() -> SessionMoveResult:
+	var r := _last_move_result
+	_last_move_result = null
+	return r
 
 
 func has_active_drag() -> bool:
@@ -215,8 +410,12 @@ func release_drag() -> SessionMoveResult:
 		else:
 			_state = State.SESSION_OVER
 			_expiry_handled = true
-		return SessionMoveResult.no_resolve(_score, _state == State.SESSION_OVER)
-	return _resolve_after_release(_remaining_ms == 0)
+		var nores := SessionMoveResult.no_resolve(_score, _state == State.SESSION_OVER)
+		_last_move_result = nores
+		return nores
+	var resolved := _resolve_after_release(_remaining_ms == 0)
+	_last_move_result = resolved
+	return resolved
 
 
 # --- Timer ---
@@ -274,7 +473,8 @@ func _handle_session_expiry() -> void:
 	if swaps == 0:
 		_state = State.SESSION_OVER
 		return
-	_resolve_after_release(true)
+	var res := _resolve_after_release(true)
+	_last_move_result = res
 
 
 func _handle_move_expiry() -> void:
@@ -292,32 +492,52 @@ func _handle_move_expiry() -> void:
 		else:
 			_state = State.SESSION_OVER
 			_expiry_handled = true
+		_last_move_result = SessionMoveResult.no_resolve(_score, _state == State.SESSION_OVER)
 		return
-	_resolve_after_release(_remaining_ms == 0)
+	var res := _resolve_after_release(_remaining_ms == 0)
+	_last_move_result = res
 
 
 func _resolve_after_release(force_session_over: bool) -> SessionMoveResult:
 	_state = State.RESOLVING
 	_move_remaining_ms = 0
+	var before_orbs := _board.snapshot_orb_ids()
+	var before_obs := _board.snapshot_obstacle_types()
+	var before_hp := _board.snapshot_obstacle_hp()
 	var cascade := CascadeResolver.resolve(_board, _generator, _max_cascade_steps)
 	if not cascade.is_stable():
 		_state = State.ERROR
+		_pending_rock_respawns = 0
+		_respawn_armed = false
 		return SessionMoveResult.failed(_score)
 
 	var cleared := cascade.cleared_cell_count_per_step_snapshot()
 	var scored := compute_move_score(cleared)
 	if not bool(scored["ok"]):
 		_state = State.ERROR
+		_pending_rock_respawns = 0
+		_respawn_armed = false
 		return SessionMoveResult.failed(_score)
 
 	var move_score: int = scored["value"]
 	var committed := checked_add(_score, move_score)
 	if not bool(committed["ok"]):
 		_state = State.ERROR
+		_pending_rock_respawns = 0
+		_respawn_armed = false
 		return SessionMoveResult.failed(_score)
 
 	_score = committed["value"]
 	var session_over := force_session_over or _remaining_ms == 0
+	var spawns: Array = []
+	if not session_over and _obstacle_mode == ObstacleMode.ROCK:
+		spawns = _apply_rock_respawn_after_resolve(cascade.total_rocks_destroyed())
+	elif session_over:
+		# No spawn after final move; keep pending for QA read but do not mutate board.
+		var destroyed := cascade.total_rocks_destroyed()
+		if destroyed > 0:
+			_pending_rock_respawns += destroyed
+		_respawn_armed = false
 	if session_over:
 		_state = State.SESSION_OVER
 		_expiry_handled = true
@@ -328,8 +548,66 @@ func _resolve_after_release(force_session_over: bool) -> SessionMoveResult:
 		cleared,
 		move_score,
 		_score,
-		session_over
+		session_over,
+		before_orbs,
+		before_obs,
+		before_hp,
+		cascade.steps_snapshot(),
+		spawns
 	)
+
+
+## After a successful ROCK-mode resolve: maybe spawn 1 (if armed), then queue new destroys.
+## Returns Array[RockSpawnTrace] (0 or 1 entries). Never errors on empty candidates.
+func _apply_rock_respawn_after_resolve(destroyed_this_move: int) -> Array:
+	var spawns: Array = []
+	if _obstacle_mode != ObstacleMode.ROCK:
+		_pending_rock_respawns = 0
+		_respawn_armed = false
+		return spawns
+	if _respawn_armed and _pending_rock_respawns > 0 and rock_count() < TARGET_ROCK_COUNT:
+		var spawned := _try_spawn_one_rock()
+		if spawned != null:
+			spawns.append(spawned)
+			_pending_rock_respawns = maxi(0, _pending_rock_respawns - 1)
+	if destroyed_this_move > 0:
+		_pending_rock_respawns += destroyed_this_move
+	# Cap pending so we never plan more than needed to reach TARGET.
+	var deficit := maxi(0, TARGET_ROCK_COUNT - rock_count())
+	if _pending_rock_respawns > deficit:
+		_pending_rock_respawns = deficit
+	_respawn_armed = _pending_rock_respawns > 0
+	return spawns
+
+
+## Pick one top-row eligible cell via obstacle RNG; place R2. Null if none.
+## Mid-board spawn is forbidden — only y == 0.
+func _try_spawn_one_rock() -> RockSpawnTrace:
+	if _board == null or not _board.is_valid():
+		return null
+	if _obstacle_rng == null:
+		return null
+	if rock_count() >= TARGET_ROCK_COUNT:
+		return null
+	var candidates: Array[Vector2i] = []
+	var y := 0
+	for x in range(_board.width()):
+		var pos := Vector2i(x, y)
+		if _board.has_obstacle(pos):
+			continue
+		# Orb may be present — spawn replaces it with ROCK HP=2.
+		candidates.append(pos)
+	if candidates.is_empty():
+		return null
+	var idx := _obstacle_rng.randi_range(0, candidates.size() - 1)
+	var chosen: Vector2i = candidates[idx]
+	# Clear orb if present, then place fresh R2.
+	if _board.has_orb(chosen):
+		if not _board.clear_orb(chosen):
+			return null
+	if not _board.set_rock(chosen):
+		return null
+	return RockSpawnTrace.create(chosen, PuzzleCell.ROCK_INITIAL_HP)
 
 
 # --- Checked score arithmetic (testable; single Score formula) ---
