@@ -143,11 +143,12 @@ func advance(delta_ms: float) -> void:
 					_begin_respawn_or_done()
 		Phase.RESPAWN_WARN:
 			if phase_elapsed_ms >= RESPAWN_WARN_MS:
-				_apply_spawns_to_vis()
+				# Landing commit deferred until RESPAWN_SHOW ends (moving-token layer).
 				phase = Phase.RESPAWN_SHOW
 				phase_elapsed_ms = 0.0
 		Phase.RESPAWN_SHOW:
 			if phase_elapsed_ms >= RESPAWN_SHOW_MS:
+				_apply_spawns_to_vis()
 				_finish()
 		_:
 			pass
@@ -184,6 +185,47 @@ func is_rock(pos: Vector2i) -> bool:
 	return ObstacleType.is_rock(obstacle_at(pos))
 
 
+## True while GRAVITY and `pos` is a moving-token source (static layer must not draw it).
+func is_gravity_source(pos: Vector2i) -> bool:
+	if phase != Phase.GRAVITY:
+		return false
+	for item in gravity_moves:
+		var mv: GravityMoveTrace = item
+		if mv.from_cell() == pos:
+			return true
+	return false
+
+
+## True while GRAVITY and `pos` is a pending landing cell (static layer must not draw final token yet).
+func is_gravity_destination(pos: Vector2i) -> bool:
+	if phase != Phase.GRAVITY:
+		return false
+	for item in gravity_moves:
+		var mv: GravityMoveTrace = item
+		if mv.to_cell() == pos:
+			return true
+	return false
+
+
+## True while REFILL and `pos` is a pending landing target.
+func is_refill_target(pos: Vector2i) -> bool:
+	if phase != Phase.REFILL:
+		return false
+	for item in refill_cells:
+		var rf: RefillTrace = item
+		if rf.pos() == pos:
+			return true
+	return false
+
+
+## True while RESPAWN_WARN/SHOW and `pos` is a pending spawn target.
+func is_spawn_target(pos: Vector2i) -> bool:
+	if phase != Phase.RESPAWN_WARN and phase != Phase.RESPAWN_SHOW:
+		return false
+	return pos in spawn_cells
+
+
+## Legacy cell-offset helper (tests / diagnostics). Prefer geometry lerp in draw.
 func gravity_draw_offset(pos: Vector2i, cell_size: float) -> Vector2:
 	if phase != Phase.GRAVITY or gravity_moves.is_empty():
 		return Vector2.ZERO
@@ -197,13 +239,8 @@ func gravity_draw_offset(pos: Vector2i, cell_size: float) -> Vector2:
 	return Vector2.ZERO
 
 
-func refill_alpha(pos: Vector2i) -> float:
-	if phase != Phase.REFILL:
-		return 1.0
-	for item in refill_cells:
-		var rf: RefillTrace = item
-		if rf.pos() == pos:
-			return maxf(0.35, refill_eased_progress())
+## Moving tokens are always fully opaque (no fade-out / teleport).
+func refill_alpha(_pos: Vector2i) -> float:
 	return 1.0
 
 
@@ -227,6 +264,27 @@ func spawn_draw_offset(pos: Vector2i, cell_size: float) -> Vector2:
 		return Vector2.ZERO
 	var eased := spawn_eased_progress()
 	return Vector2(0.0, -cell_size * RESPAWN_DROP_CELLS * (1.0 - eased))
+
+
+## Pixel center of a gravity moving token (presentation SoT = GravityMoveTrace).
+func gravity_token_center(mv: GravityMoveTrace, geometry: BoardGeometry) -> Vector2:
+	var from_c := geometry.cell_rect(mv.from_cell()).get_center()
+	var to_c := geometry.cell_rect(mv.to_cell()).get_center()
+	return from_c.lerp(to_c, gravity_eased_progress())
+
+
+## Pixel center of a refill moving token (above board → target).
+func refill_token_center(rf: RefillTrace, geometry: BoardGeometry) -> Vector2:
+	var target := geometry.cell_rect(rf.pos()).get_center()
+	var start := target + Vector2(0.0, -geometry.cell_size() * (1.0 + float(rf.pos().y)))
+	return start.lerp(target, refill_eased_progress())
+
+
+## Pixel center of a respawn / opening ROCK moving token.
+func spawn_token_center(pos: Vector2i, geometry: BoardGeometry) -> Vector2:
+	var target := geometry.cell_rect(pos).get_center()
+	var start := target + Vector2(0.0, -geometry.cell_size() * RESPAWN_DROP_CELLS)
+	return start.lerp(target, spawn_eased_progress())
 
 
 func _begin_step_match() -> void:
@@ -280,6 +338,14 @@ func _begin_gravity() -> void:
 	phase_elapsed_ms = 0.0
 	gravity_progress = 0.0
 	gravity_duration_ms = fall_duration_ms(_max_gravity_cells())
+	# Move tokens onto the transient layer: suppress static source cells immediately.
+	# Destinations stay empty until phase-end commit (no double-draw / teleport).
+	for item in gravity_moves:
+		var mv: GravityMoveTrace = item
+		if mv.is_rock():
+			_set_obs(mv.from_cell(), ObstacleType.Id.NONE, 0)
+		else:
+			_set_orb(mv.from_cell(), -1)
 
 
 func _max_gravity_cells() -> int:
@@ -293,21 +359,13 @@ func _max_gravity_cells() -> int:
 
 
 func _commit_gravity_to_vis() -> void:
-	# Clear sources first, then place destinations (Orb + ROCK).
-	var pending: Array = []
+	# Sources already cleared at phase begin; place destinations only.
 	for item in gravity_moves:
 		var mv: GravityMoveTrace = item
-		pending.append(mv)
 		if mv.is_rock():
-			_set_obs(mv.from_cell(), ObstacleType.Id.NONE, 0)
+			_set_obs(mv.to_cell(), ObstacleType.Id.ROCK, mv.rock_hp())
 		else:
-			_set_orb(mv.from_cell(), -1)
-	for item in pending:
-		var mv2: GravityMoveTrace = item
-		if mv2.is_rock():
-			_set_obs(mv2.to_cell(), ObstacleType.Id.ROCK, mv2.rock_hp())
-		else:
-			_set_orb(mv2.to_cell(), mv2.orb_id())
+			_set_orb(mv.to_cell(), mv.orb_id())
 	gravity_progress = 1.0
 
 
@@ -316,9 +374,7 @@ func _begin_refill() -> void:
 	phase_elapsed_ms = 0.0
 	refill_progress = 0.0
 	refill_duration_ms = fall_duration_ms(_max_refill_cells())
-	for item in refill_cells:
-		var rf: RefillTrace = item
-		_set_orb(rf.pos(), rf.orb_id())
+	# Targets stay empty until landing commit — moving tokens draw above→target.
 
 
 func _max_refill_cells() -> int:
@@ -333,6 +389,9 @@ func _max_refill_cells() -> int:
 
 
 func _commit_refill_to_vis() -> void:
+	for item in refill_cells:
+		var rf: RefillTrace = item
+		_set_orb(rf.pos(), rf.orb_id())
 	refill_progress = 1.0
 
 

@@ -289,9 +289,12 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 - Domain SoT unit: **integer milliseconds** (not float seconds)
 - DEV default: **60000** ms; comparison set: **45000 / 60000 / 90000** ms
 - `advance_time(elapsed_ms)`: `>0` applies; `0` no-op; `<0` reject/no-op
-- Ticks in `IDLE` / `ROUTE_DRAG` only; paused in `RESOLVING` / `SESSION_OVER` / `ERROR` / `INVALID`
+- Ticks in `IDLE` / `ROUTE_DRAG` only at the **domain** `advance_time` gate; paused in domain `RESOLVING` / `SESSION_OVER` / `ERROR` / `INVALID`
+- **UI PRESENTING** (ResolutionPresenter busy) is **not** domain `RESOLVING`: after START, Session Timer keeps running during match/hit/gravity/refill/respawn/opening playback
+- Move Timer remains `ROUTE_DRAG`-only (presentation never invents Move drain)
 - Overshoot clamps to 0; expiry handled once
 - Mid-drag expiry: forced release if swaps≥1 (no rollback); score on stable cascade; then `SESSION_OVER`
+- Mid-presentation Session expiry → `SESSION_OVER`, finish current anim, block new input; no double resolve / score recompute
 
 ### Session states (R-E target)
 
@@ -335,15 +338,17 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 
 ### Timer
 
-- `advance_time(elapsed_ms)` per R-E0; ticks only `IDLE`/`ROUTE_DRAG`
-- Mid-drag expiry forced release; RESOLVING is sync domain pause (no tick during resolve)
+- `advance_time(elapsed_ms)` per R-E0; ticks only `IDLE`/`ROUTE_DRAG` (domain gate)
+- Mid-drag expiry forced release; domain `RESOLVING` is sync and does not sticky-pause UI presentation time
 - **R-F Dual Timer:** Session Timer + per-drag Move Timer (`MOVE_DURATION_MS = 2000` DEV)
   - `IDLE`: Session ticks; Move inactive (`move_remaining_ms() == 0`)
   - `ROUTE_DRAG`: both deduct the same `elapsed_ms` (including same-cell hold)
-  - `RESOLVING` / `SESSION_OVER` / `ERROR` / `INVALID`: both paused
+  - Domain `RESOLVING` / `SESSION_OVER` / `ERROR` / `INVALID`: both paused at `advance_time`
+  - **UI presentation** (after resolve returns to `IDLE`): Session Timer continues; Move inactive; input blocked while busy
   - Move expiry (`swap_count >= 1`): forced release → resolve → Score → `IDLE` if Session remains
   - Move expiry (`swap_count == 0`): cancel-equivalent → no cascade → `IDLE` if Session remains
   - Session expiry during drag wins over Move (including simultaneous 0); one forced release; final `SESSION_OVER`
+  - Session expiry during presentation: `SESSION_OVER`, anim may finish, no new moves
   - Next successful `begin_drag` resets Move to 2000 ms
   - SoT: `PuzzleSession` (`remaining_ms`, `move_remaining_ms`, expiry precedence, forced release)
 
@@ -376,7 +381,9 @@ Mid-cascade ERROR does **not** roll back prior steps; the board is not treated a
 - **No per-frame gameplay cap** — active gameplay elapsed is never discarded
 - Pause when app/window unfocused (no catch-up on resume)
 - Startup / focus-return: skip a few frames, reset remainder, and drop at most one abnormal transition spike (>1s)
-- Domain `RESOLVING` pauses **both** Session and Move timers
+- Domain `RESOLVING` is synchronous inside `advance_time` / release — not a sticky UI pause
+- **UI PRESENTING:** Session Timer **keeps running** after START (Score Attack tempo); Move Timer inactive; input blocked
+- Presenter advances before Session clock in `_process`; presentation busy must not early-return past the Session clock
 
 ### DEV HUD
 
@@ -455,9 +462,11 @@ improve route thinking / replayability without becoming pure annoyance?
   (match → rock hit → clear → gravity Orb+ROCK downward → refill from above → respawn drop)
 - Fall motion: smoothstep `_ease_fall` + distance-based duration
   (`FALL_BASE_MS`/`FALL_PER_CELL_MS`, clamped `FALL_MIN_MS`..`FALL_MAX_MS`)
+- Gravity / refill / respawn: **continuous moving-token** layer (trace SoT → pixel lerp);
+  static layer suppresses sources/targets until phase-end commit (no teleport / double-draw)
 - Gravity / refill / respawn visuals are **top → down only** (no horizontal / upward / overshoot)
 - START opening: seeded initial R2 rocks drop from above into top-row targets (same respawn-style path)
-- `presentation_busy` blocks input/timers; not a gameplay SoT
+- `presentation_busy` blocks **input** only; Session Timer still runs after START (not a gameplay SoT)
 - Render target: **60fps** (`application/run/max_fps=60` + `Engine.max_fps`); animations stay delta_ms-based
 - DEV-only FPS overlay (`SHOW_DEV_FPS`, ~500ms sample) — not production UI
 
@@ -483,8 +492,9 @@ Hypothesis only — do **not** add `ObstacleType.SLIME` / GDScript / tests in R-
 
 ### Status
 
-- **FIX FIRST** (60fps target + seeded random initial ROCK) → **VERIFY FIRST** after APK;
+- **FIX FIRST** (live Session Timer during presentation + continuous fall tokens) → **VERIFY FIRST** after APK;
   **Gate 2 NOT STARTED**
+- Note for Gate 2 / Score redesign: long cascade presentation consumes Score Attack time by design
 - Do **not** merge R-G to main until Gate 2 human comparison
 - Do **not** start LOCK / SLIME / Rescue
 

@@ -993,10 +993,18 @@ func test_gravity_eased_mid_and_exact_end() -> void:
 	presenter.advance(ResolutionPresenter.ROCK_HIT_MS)
 	assert_eq(presenter.phase, ResolutionPresenter.Phase.GRAVITY)
 	assert_eq(presenter.gravity_duration_ms, ResolutionPresenter.fall_duration_ms(3))
+	# Static source suppressed; destination empty until commit.
+	assert_eq(presenter.orb_at(Vector2i(0, 0)), -1)
+	assert_eq(presenter.orb_at(Vector2i(0, 3)), -1)
+	assert_true(presenter.is_gravity_source(Vector2i(0, 0)))
+	assert_true(presenter.is_gravity_destination(Vector2i(0, 3)))
 	var cell_size := 40.0
 	var full := 3.0 * cell_size
-	# Start
+	var geom := BoardGeometry.create(Vector2.ZERO, cell_size, 2, 4)
+	var mv: GravityMoveTrace = presenter.gravity_moves[0]
+	# Start: exact source center
 	assert_eq(presenter.gravity_draw_offset(Vector2i(0, 0), cell_size), Vector2.ZERO)
+	assert_eq(presenter.gravity_token_center(mv, geom), geom.cell_rect(Vector2i(0, 0)).get_center())
 	# Mid: between, uses easing (not snapped to cells)
 	presenter.advance(presenter.gravity_duration_ms * 0.25)
 	var mid := presenter.gravity_draw_offset(Vector2i(0, 0), cell_size)
@@ -1005,6 +1013,14 @@ func test_gravity_eased_mid_and_exact_end() -> void:
 	assert_lt(mid.y, full)
 	var expected_mid := full * ResolutionPresenter._ease_fall(0.25)
 	assert_eq(mid.y, expected_mid)
+	var mid_c := presenter.gravity_token_center(mv, geom)
+	var from_c := geom.cell_rect(Vector2i(0, 0)).get_center()
+	var to_c := geom.cell_rect(Vector2i(0, 3)).get_center()
+	assert_gt(mid_c.y, from_c.y)
+	assert_lt(mid_c.y, to_c.y)
+	assert_eq(mid_c.x, from_c.x)
+	assert_eq(presenter.orb_at(Vector2i(0, 0)), -1)
+	assert_eq(presenter.orb_at(Vector2i(0, 3)), -1)
 	# Finish gravity
 	presenter.advance(presenter.gravity_duration_ms)
 	assert_eq(presenter.phase, ResolutionPresenter.Phase.REFILL)
@@ -1033,9 +1049,13 @@ func test_rock_gravity_easing_preserves_hp() -> void:
 	presenter.advance(ResolutionPresenter.MATCH_MS)
 	presenter.advance(ResolutionPresenter.ROCK_HIT_MS)
 	assert_eq(presenter.phase, ResolutionPresenter.Phase.GRAVITY)
-	assert_eq(presenter.rock_hp_at(Vector2i(0, 0)), 1)
+	# Source cleared into moving layer; HP SoT is GravityMoveTrace.
+	assert_false(presenter.is_rock(Vector2i(0, 0)))
+	assert_eq((presenter.gravity_moves[0] as GravityMoveTrace).rock_hp(), 1)
 	presenter.advance(presenter.gravity_duration_ms * 0.4)
-	assert_eq(presenter.rock_hp_at(Vector2i(0, 0)), 1) # HP unchanged mid-fall
+	assert_eq((presenter.gravity_moves[0] as GravityMoveTrace).rock_hp(), 1) # HP unchanged mid-fall
+	assert_false(presenter.is_rock(Vector2i(0, 0)))
+	assert_false(presenter.is_rock(Vector2i(0, 3))) # destination not committed yet
 	var off := presenter.gravity_draw_offset(Vector2i(0, 0), 40.0)
 	assert_eq(off.x, 0.0)
 	assert_gt(off.y, 0.0)
@@ -1068,6 +1088,9 @@ func test_refill_eased_from_above() -> void:
 	presenter.advance(presenter.gravity_duration_ms)
 	assert_eq(presenter.phase, ResolutionPresenter.Phase.REFILL)
 	assert_eq(presenter.refill_duration_ms, ResolutionPresenter.fall_duration_ms(3))
+	# Target stays empty until landing commit.
+	assert_eq(presenter.orb_at(Vector2i(0, 2)), -1)
+	assert_true(presenter.is_refill_target(Vector2i(0, 2)))
 	var cell_size := 40.0
 	var start_travel := -cell_size * (1.0 + 2.0)
 	assert_eq(presenter.refill_draw_offset(Vector2i(0, 2), cell_size).y, start_travel)
@@ -1076,6 +1099,7 @@ func test_refill_eased_from_above() -> void:
 	assert_eq(mid.x, 0.0)
 	assert_lt(mid.y, 0.0)
 	assert_gt(mid.y, start_travel)
+	assert_eq(presenter.orb_at(Vector2i(0, 2)), -1) # still moving
 	presenter.advance(presenter.refill_duration_ms)
 	assert_eq(presenter.refill_draw_offset(Vector2i(0, 2), cell_size), Vector2.ZERO)
 	assert_eq(presenter.orb_at(Vector2i(0, 2)), OrbType.Id.ORB_3)
@@ -1222,7 +1246,7 @@ func test_initial_rocks_do_not_consume_orb_rng() -> void:
 			assert_eq(off.orb_at(pos), rock.orb_at(pos))
 
 
-func test_opening_rock_presentation_blocks_input_and_timer() -> void:
+func test_opening_rock_presentation_blocks_input_timer_runs() -> void:
 	var view := PuzzleGameView.new()
 	add_child_autofree(view)
 	view.select_obstacle_mode(PuzzleSession.ObstacleMode.ROCK)
@@ -1230,9 +1254,18 @@ func test_opening_rock_presentation_blocks_input_and_timer() -> void:
 	assert_true(view.has_playable_session())
 	assert_true(view.is_presentation_busy())
 	assert_false(view.board_input_enabled())
+	# Drain startup skip frames so Session clock can tick during opening.
+	view._skip_timer_frames = 0
+	view._drop_transition_spike = false
+	view._elapsed_accumulator_ms = 0.0
 	var rem := view._session.remaining_ms()
-	view._process(0.05)
-	assert_eq(view._session.remaining_ms(), rem)
+	assert_eq(rem, 60000)
+	view._process(0.100)
+	assert_lt(view._session.remaining_ms(), rem)
+	assert_eq(view._session.move_remaining_ms(), 0)
+	assert_false(view._session.has_active_move_timer())
+	assert_true(view.is_presentation_busy())
+	assert_false(view.board_input_enabled())
 	assert_true(
 		view._presenter.phase == ResolutionPresenter.Phase.RESPAWN_WARN
 		or view._presenter.phase == ResolutionPresenter.Phase.RESPAWN_SHOW
@@ -1242,6 +1275,9 @@ func test_opening_rock_presentation_blocks_input_and_timer() -> void:
 	var warn := view._presenter.spawn_draw_offset(pos, cell_size)
 	assert_eq(warn.x, 0.0)
 	assert_lt(warn.y, 0.0)
+	# Target static ROCK suppressed until landing.
+	assert_true(view._presenter.is_spawn_target(pos))
+	assert_false(view._presenter.is_rock(pos))
 	# Finish opening.
 	for _i in range(40):
 		if not view.is_presentation_busy():
@@ -1251,6 +1287,265 @@ func test_opening_rock_presentation_blocks_input_and_timer() -> void:
 	assert_true(view.board_input_enabled())
 	assert_true(view._session.is_rock_at(pos))
 	assert_eq(view._session.rock_hp_at(pos), 2)
+
+
+func test_session_timer_runs_during_gravity_refill_respawn() -> void:
+	var view := PuzzleGameView.new()
+	add_child_autofree(view)
+	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
+	view.start_selected_session()
+	view._skip_timer_frames = 0
+	view._drop_transition_spike = false
+	view._elapsed_accumulator_ms = 0.0
+	# Synthetic gravity presentation while IDLE.
+	var before_orbs: Array = [[OrbType.Id.ORB_0], [-1], [-1]]
+	var before_obs: Array = [
+		[ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE],
+	]
+	var before_hp: Array = [[0], [0], [0]]
+	var gmove := GravityMoveTrace.create_orb(Vector2i(0, 0), Vector2i(0, 2), OrbType.Id.ORB_0)
+	var rf := RefillTrace.create(Vector2i(0, 0), OrbType.Id.ORB_1)
+	var step := CascadeStepTrace.create(0, [], [], [gmove], [rf])
+	var move := SessionMoveResult.resolved(
+		1, [], 0, view._session.score(), false,
+		before_orbs, before_obs, before_hp,
+		[step], []
+	)
+	view._presenter.begin(move)
+	view._presenter.advance(ResolutionPresenter.MATCH_MS)
+	view._presenter.advance(ResolutionPresenter.ROCK_HIT_MS)
+	assert_eq(view._presenter.phase, ResolutionPresenter.Phase.GRAVITY)
+	var before_g := view._session.remaining_ms()
+	view._process(0.050)
+	assert_lt(view._session.remaining_ms(), before_g)
+	assert_false(view.board_input_enabled())
+	assert_false(view._session.has_active_move_timer())
+	# Drive into REFILL
+	while view._presenter.phase == ResolutionPresenter.Phase.GRAVITY:
+		view._presenter.advance(20.0)
+	assert_eq(view._presenter.phase, ResolutionPresenter.Phase.REFILL)
+	var before_r := view._session.remaining_ms()
+	view._process(0.050)
+	assert_lt(view._session.remaining_ms(), before_r)
+	# Respawn path with empty before-snapshot at target.
+	var spawn := RockSpawnTrace.create(Vector2i(1, 0), 2)
+	var before_orbs2: Array = view._session.board_snapshot()
+	var before_obs2: Array = view._session.obstacle_snapshot()
+	var before_hp2: Array = view._session.obstacle_hp_snapshot()
+	before_obs2[spawn.pos().y][spawn.pos().x] = ObstacleType.Id.NONE
+	before_hp2[spawn.pos().y][spawn.pos().x] = 0
+	before_orbs2[spawn.pos().y][spawn.pos().x] = -1
+	var spawn_move := SessionMoveResult.resolved(
+		0, [], 0, view._session.score(), false,
+		before_orbs2, before_obs2, before_hp2,
+		[],
+		[spawn]
+	)
+	view._presenter.begin(spawn_move)
+	assert_eq(view._presenter.phase, ResolutionPresenter.Phase.RESPAWN_WARN)
+	var before_s := view._session.remaining_ms()
+	view._process(0.050)
+	assert_lt(view._session.remaining_ms(), before_s)
+	assert_false(view.board_input_enabled())
+
+
+func test_presentation_background_does_not_drain_session() -> void:
+	var view := PuzzleGameView.new()
+	add_child_autofree(view)
+	view.select_obstacle_mode(PuzzleSession.ObstacleMode.ROCK)
+	view.start_selected_session()
+	view._skip_timer_frames = 0
+	view._drop_transition_spike = false
+	view._elapsed_accumulator_ms = 0.0
+	assert_true(view.is_presentation_busy())
+	view._app_active = false
+	var rem := view._session.remaining_ms()
+	view._process(0.200)
+	assert_eq(view._session.remaining_ms(), rem)
+	# Focus return: no catch-up of background elapsed.
+	view._app_active = true
+	view._elapsed_accumulator_ms = 0.0
+	view._skip_timer_frames = 2
+	view._drop_transition_spike = true
+	var rem2 := view._session.remaining_ms()
+	view._process(0.500) # skipped frame
+	view._process(0.500) # skipped frame
+	# After skip frames, next process may tick — but not the 1.0s background time.
+	assert_gte(view._session.remaining_ms(), rem2 - 600)
+
+
+func test_presentation_session_expiry_finishes_anim_no_new_input() -> void:
+	var view := PuzzleGameView.new()
+	add_child_autofree(view)
+	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
+	view.start_selected_session()
+	view._skip_timer_frames = 0
+	view._drop_transition_spike = false
+	view._elapsed_accumulator_ms = 0.0
+	var score_before := view._session.score()
+	var before_orbs: Array = [[OrbType.Id.ORB_2], [-1], [-1]]
+	var before_obs: Array = [
+		[ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE],
+	]
+	var before_hp: Array = [[0], [0], [0]]
+	var gmove := GravityMoveTrace.create_orb(Vector2i(0, 0), Vector2i(0, 2), OrbType.Id.ORB_2)
+	var step := CascadeStepTrace.create(0, [], [], [gmove], [])
+	var move := SessionMoveResult.resolved(
+		1, [], 0, score_before, false,
+		before_orbs, before_obs, before_hp,
+		[step], []
+	)
+	view._presenter.begin(move)
+	view._presenter.advance(ResolutionPresenter.MATCH_MS)
+	view._presenter.advance(ResolutionPresenter.ROCK_HIT_MS)
+	assert_eq(view._presenter.phase, ResolutionPresenter.Phase.GRAVITY)
+	# Expire session mid-presentation.
+	view._session._remaining_ms = 30
+	view._process(0.050)
+	assert_eq(view._session.remaining_ms(), 0)
+	assert_eq(view._session.state(), PuzzleSession.State.SESSION_OVER)
+	assert_true(view.is_presentation_busy())
+	assert_false(view.board_input_enabled())
+	# Presenter may finish safely; no score mutation.
+	for _i in range(40):
+		if not view.is_presentation_busy():
+			break
+		view._process(0.05)
+	assert_false(view.is_presentation_busy())
+	assert_eq(view._session.score(), score_before)
+	assert_eq(view._session.state(), PuzzleSession.State.SESSION_OVER)
+	assert_false(view.board_input_enabled())
+	assert_eq(view._session.remaining_ms(), 0)
+
+
+func test_continuous_gravity_token_progress_and_no_static_dup() -> void:
+	var before_orbs: Array = [
+		[OrbType.Id.ORB_0],
+		[-1],
+		[-1],
+		[OrbType.Id.ORB_4],
+	]
+	var before_obs: Array = [
+		[ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE],
+	]
+	var before_hp: Array = [[0], [0], [0], [0]]
+	# Upper orb falls 2; lower stays (not a source).
+	var gmove := GravityMoveTrace.create_orb(Vector2i(0, 0), Vector2i(0, 2), OrbType.Id.ORB_0)
+	var step := CascadeStepTrace.create(0, [], [], [gmove], [])
+	var move := SessionMoveResult.resolved(
+		1, [], 0, 0, false,
+		before_orbs, before_obs, before_hp,
+		[step], []
+	)
+	var presenter := ResolutionPresenter.new()
+	presenter.begin(move)
+	presenter.advance(ResolutionPresenter.MATCH_MS)
+	presenter.advance(ResolutionPresenter.ROCK_HIT_MS)
+	assert_eq(presenter.phase, ResolutionPresenter.Phase.GRAVITY)
+	var geom := BoardGeometry.create(Vector2(10, 20), 40.0, 1, 4)
+	var mv: GravityMoveTrace = presenter.gravity_moves[0]
+	var from_c := geom.cell_rect(mv.from_cell()).get_center()
+	var to_c := geom.cell_rect(mv.to_cell()).get_center()
+	assert_eq(presenter.gravity_token_center(mv, geom), from_c)
+	assert_eq(presenter.orb_at(mv.from_cell()), -1)
+	assert_eq(presenter.orb_at(mv.to_cell()), -1)
+	assert_eq(presenter.orb_at(Vector2i(0, 3)), OrbType.Id.ORB_4) # static stays
+	var prev_y := from_c.y
+	for frac in [0.25, 0.5, 0.75]:
+		presenter.gravity_progress = frac
+		var c := presenter.gravity_token_center(mv, geom)
+		assert_eq(c.x, from_c.x) # no horizontal
+		assert_gt(c.y, prev_y) # downward only
+		assert_lt(c.y, to_c.y)
+		assert_eq(presenter.orb_at(mv.from_cell()), -1)
+		assert_eq(presenter.orb_at(mv.to_cell()), -1)
+		prev_y = c.y
+	presenter.gravity_progress = 1.0
+	assert_eq(presenter.gravity_token_center(mv, geom), to_c)
+	presenter._commit_gravity_to_vis()
+	assert_eq(presenter.orb_at(mv.to_cell()), OrbType.Id.ORB_0)
+	assert_eq(presenter.orb_at(mv.from_cell()), -1)
+
+
+func test_mixed_column_orb_rock_continuous_order() -> void:
+	var before_orbs: Array = [
+		[OrbType.Id.ORB_1],
+		[-1],
+		[-1],
+		[-1],
+	]
+	var before_obs: Array = [
+		[ObstacleType.Id.NONE],
+		[ObstacleType.Id.ROCK],
+		[ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE],
+	]
+	var before_hp: Array = [[0], [2], [0], [0]]
+	var orb_mv := GravityMoveTrace.create_orb(Vector2i(0, 0), Vector2i(0, 2), OrbType.Id.ORB_1)
+	var rock_mv := GravityMoveTrace.create_rock(Vector2i(0, 1), Vector2i(0, 3), 2)
+	var step := CascadeStepTrace.create(0, [], [], [orb_mv, rock_mv], [])
+	var move := SessionMoveResult.resolved(
+		1, [], 0, 0, false,
+		before_orbs, before_obs, before_hp,
+		[step], []
+	)
+	var presenter := ResolutionPresenter.new()
+	presenter.begin(move)
+	presenter.advance(ResolutionPresenter.MATCH_MS)
+	presenter.advance(ResolutionPresenter.ROCK_HIT_MS)
+	assert_eq(presenter.phase, ResolutionPresenter.Phase.GRAVITY)
+	var geom := BoardGeometry.create(Vector2.ZERO, 50.0, 1, 4)
+	presenter.gravity_progress = 0.5
+	var oc := presenter.gravity_token_center(orb_mv, geom)
+	var rc := presenter.gravity_token_center(rock_mv, geom)
+	assert_lt(oc.y, rc.y) # orb stays above rock visually (relative order)
+	assert_eq((presenter.gravity_moves[1] as GravityMoveTrace).rock_hp(), 2)
+	assert_false(presenter.is_rock(Vector2i(0, 1)))
+	assert_false(presenter.is_rock(Vector2i(0, 3)))
+	presenter._commit_gravity_to_vis()
+	assert_eq(presenter.orb_at(Vector2i(0, 2)), OrbType.Id.ORB_1)
+	assert_true(presenter.is_rock(Vector2i(0, 3)))
+	assert_eq(presenter.rock_hp_at(Vector2i(0, 3)), 2)
+
+
+func test_respawn_commit_only_on_landing() -> void:
+	var before_orbs: Array = [[-1], [-1]]
+	var before_obs: Array = [[ObstacleType.Id.NONE], [ObstacleType.Id.NONE]]
+	var before_hp: Array = [[0], [0]]
+	var sp := RockSpawnTrace.create(Vector2i(0, 0), 2)
+	var move := SessionMoveResult.resolved(
+		0, [], 0, 0, false,
+		before_orbs, before_obs, before_hp,
+		[], [sp]
+	)
+	var presenter := ResolutionPresenter.new()
+	presenter.begin(move)
+	assert_eq(presenter.phase, ResolutionPresenter.Phase.RESPAWN_WARN)
+	assert_false(presenter.is_rock(sp.pos()))
+	assert_true(presenter.is_spawn_target(sp.pos()))
+	var geom := BoardGeometry.create(Vector2.ZERO, 40.0, 1, 2)
+	var warn_c := presenter.spawn_token_center(sp.pos(), geom)
+	var target_c := geom.cell_rect(sp.pos()).get_center()
+	assert_lt(warn_c.y, target_c.y)
+	presenter.advance(ResolutionPresenter.RESPAWN_WARN_MS)
+	assert_eq(presenter.phase, ResolutionPresenter.Phase.RESPAWN_SHOW)
+	assert_false(presenter.is_rock(sp.pos())) # still moving
+	presenter.advance(ResolutionPresenter.RESPAWN_SHOW_MS * 0.5)
+	var mid_c := presenter.spawn_token_center(sp.pos(), geom)
+	assert_gt(mid_c.y, warn_c.y)
+	assert_lt(mid_c.y, target_c.y)
+	assert_false(presenter.is_rock(sp.pos()))
+	presenter.advance(ResolutionPresenter.RESPAWN_SHOW_MS)
+	assert_false(presenter.is_busy())
+	assert_true(presenter.is_rock(sp.pos()))
+	assert_eq(presenter.rock_hp_at(sp.pos()), 2)
 
 
 func test_opening_off_has_no_rock_drop() -> void:

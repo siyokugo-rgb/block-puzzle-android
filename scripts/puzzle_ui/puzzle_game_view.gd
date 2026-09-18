@@ -296,7 +296,7 @@ func _start_session(duration_ms: int) -> void:
 
 
 ## Presentation-only: initial R2 rocks drop from above into seeded top-row columns.
-## Domain already holds final rocks; timer pauses while presenter is busy.
+## Domain already holds final rocks; Session Timer keeps running while presenter is busy.
 func _begin_opening_rock_presentation_if_needed() -> void:
 	if _session == null or not _session.is_valid():
 		return
@@ -359,43 +359,46 @@ func _refresh_action_buttons() -> void:
 
 func _process(delta: float) -> void:
 	_update_dev_fps_monitor(delta)
-	# Presentation playback: no Session/Move timer drain.
-	if _presenter != null and _presenter.is_busy():
+	# 1) Advance presentation independently of Session Timer.
+	var presenting := _presenter != null and _presenter.is_busy()
+	if presenting:
 		_presenter.advance(delta * 1000.0)
-		_refresh_hud()
+	# 2) Session Timer: after START, runs during presentation too (Score Attack tempo).
+	# Move Timer stays domain ROUTE_DRAG-only (advance_time); presentation never invents drag time.
+	_advance_session_clock(delta)
+	_refresh_hud()
+	if presenting or (_session != null and _session.is_valid()):
 		queue_redraw()
-		return
-	# READY / pre-session: never consume Score Attack time (UMP/ads may still show).
+
+
+## Foreground Session clock. READY / background / SESSION_OVER / ERROR do not consume time.
+func _advance_session_clock(delta: float) -> void:
 	if _session == null or not _session.is_valid():
 		return
 	if not _app_active:
 		return
 	var st := _session.state()
 	if st != PuzzleSession.State.IDLE and st != PuzzleSession.State.ROUTE_DRAG:
-		_refresh_hud()
 		return
 	# Skip startup / focus transition frames (abnormal first delta); do not count them.
 	if _skip_timer_frames > 0:
 		_skip_timer_frames -= 1
 		_elapsed_accumulator_ms = 0.0
-		_refresh_hud()
 		return
 	# Active foreground: preserve all elapsed whole milliseconds (no per-frame gameplay cap).
 	_elapsed_accumulator_ms += delta * 1000.0
 	var whole_ms := int(floor(_elapsed_accumulator_ms))
-	if whole_ms > 0:
-		_elapsed_accumulator_ms -= float(whole_ms)
-		# One-shot transition spike filter only (startup/focus). Not a gameplay cap.
-		if _drop_transition_spike and whole_ms > 1000:
-			_drop_transition_spike = false
-			_refresh_hud()
-			return
+	if whole_ms <= 0:
+		return
+	_elapsed_accumulator_ms -= float(whole_ms)
+	# One-shot transition spike filter only (startup/focus). Not a gameplay cap.
+	if _drop_transition_spike and whole_ms > 1000:
 		_drop_transition_spike = false
-		var before_state := _session.state()
-		_session.advance_time(whole_ms)
-		_on_domain_time_advanced(before_state)
-		_refresh_hud()
-		queue_redraw()
+		return
+	_drop_transition_spike = false
+	var before_state := _session.state()
+	_session.advance_time(whole_ms)
+	_on_domain_time_advanced(before_state)
 
 
 ## DEV-only FPS sample; throttled so Label text is not rewritten every frame.
@@ -619,7 +622,8 @@ func _refresh_hud() -> void:
 	else:
 		_state_label.text = "State: %s" % _state_name(_session.state())
 	var note := _last_move_note
-	if _session.state() == PuzzleSession.State.SESSION_OVER:
+	# SESSION OVER banner waits until presentation finishes (expiry mid-anim is OK).
+	if not is_presentation_busy() and _session.state() == PuzzleSession.State.SESSION_OVER:
 		note = "SESSION OVER — Score %d — Restart / pick 45·60·90" % _session.score()
 	elif _session.state() == PuzzleSession.State.ERROR:
 		note = "ERROR — input blocked"
@@ -656,6 +660,7 @@ func _draw() -> void:
 	var snap: Array = _presenter.vis_orbs if presenting else _session.board_snapshot()
 	var head := Vector2i(-1, -1) if presenting else _session.active_drag_current_cell()
 	var cell_size := _geometry.cell_size()
+	# --- Static layer: cells that are not active moving-token sources/targets ---
 	for y in range(DEV_HEIGHT):
 		if y >= snap.size():
 			continue
@@ -663,83 +668,108 @@ func _draw() -> void:
 		for x in range(DEV_WIDTH):
 			var cell := Vector2i(x, y)
 			var rect := _geometry.cell_rect(cell)
-			var is_rock := (
-				_presenter.is_rock(cell) if presenting else _session.is_rock_at(cell)
-			)
 			draw_rect(rect, Color(0.12, 0.14, 0.18), true)
 			draw_rect(rect, Color(0.35, 0.38, 0.45), false, 2.0)
 			if presenting and cell in _presenter.highlight_cells:
 				draw_rect(rect.grow(-2.0), Color(1.0, 0.95, 0.35, 0.55), false, 3.0)
 			if presenting and cell in _presenter.spawn_cells:
 				draw_rect(rect.grow(-4.0), Color(0.95, 0.75, 0.25, 0.7), false, 3.0)
+			# Suppress static tokens that are currently on the moving layer.
+			if presenting and (
+				_presenter.is_gravity_source(cell)
+				or _presenter.is_gravity_destination(cell)
+				or _presenter.is_refill_target(cell)
+				or _presenter.is_spawn_target(cell)
+			):
+				continue
+			var is_rock := (
+				_presenter.is_rock(cell) if presenting else _session.is_rock_at(cell)
+			)
 			if is_rock:
 				var rock_fill := Color(0.45, 0.45, 0.48)
 				if presenting and cell in _presenter.flash_rocks:
 					rock_fill = Color(0.85, 0.55, 0.35)
-				var rock_offset := Vector2.ZERO
-				if presenting:
-					rock_offset = _presenter.gravity_draw_offset(cell, cell_size)
-					if rock_offset == Vector2.ZERO:
-						rock_offset = _presenter.spawn_draw_offset(cell, cell_size)
-				var inset := rect.grow(-rect.size.x * 0.08)
-				inset.position += rock_offset
-				draw_rect(inset, rock_fill, true)
-				draw_rect(inset, Color(0.20, 0.20, 0.22), false, 2.0)
-				var font := ThemeDB.fallback_font
-				var font_size := int(maxi(12, int(rect.size.x * 0.36)))
-				var hp := (
+				_draw_rock_at_rect(rect, rock_fill, (
 					_presenter.rock_hp_at(cell) if presenting else _session.rock_hp_at(cell)
-				)
-				var label := "R%d" % hp if hp > 0 else "R"
-				var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
-				var text_pos := inset.position + (inset.size - text_size) * 0.5 + Vector2(0, text_size.y * 0.8)
-				draw_string(font, text_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0.95, 0.95, 0.92))
+				))
 				continue
-			# Respawn WARN: domain rock not yet applied — preview drop from above.
-			if presenting and cell in _presenter.spawn_cells:
-				if _presenter.phase == ResolutionPresenter.Phase.RESPAWN_WARN:
-					var drop := _presenter.spawn_draw_offset(cell, cell_size)
-					var rin := rect.grow(-rect.size.x * 0.08)
-					rin.position += drop
-					draw_rect(rin, Color(0.45, 0.45, 0.48), true)
-					draw_rect(rin, Color(0.95, 0.75, 0.25), false, 2.0)
-					var fnt := ThemeDB.fallback_font
-					var fs := int(maxi(12, int(rect.size.x * 0.36)))
-					var lab := "R2"
-					var ts := fnt.get_string_size(lab, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
-					var tp := rin.position + (rin.size - ts) * 0.5 + Vector2(0, ts.y * 0.8)
-					draw_string(fnt, tp, lab, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.95, 0.95, 0.92))
 			var orb_id: int = row[x] if x < row.size() else -1
 			if presenting:
 				orb_id = _presenter.orb_at(cell)
 			if orb_id >= 0:
-				var fill := _orb_color(orb_id)
-				var offset := Vector2.ZERO
-				if presenting:
-					offset = _presenter.gravity_draw_offset(cell, cell_size)
-					if offset == Vector2.ZERO:
-						offset = _presenter.refill_draw_offset(cell, cell_size)
-				var alpha := _presenter.refill_alpha(cell) if presenting else 1.0
-				fill.a = alpha
-				var inset := rect.grow(-rect.size.x * 0.12)
-				inset.position += offset
-				draw_rect(inset, fill, true)
-				var label := _orb_symbol(orb_id)
-				var font := ThemeDB.fallback_font
-				var font_size := int(maxi(12, int(rect.size.x * 0.35)))
-				var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
-				var text_pos := inset.position + (inset.size - text_size) * 0.5 + Vector2(0, text_size.y * 0.8)
-				draw_string(
-					font,
-					text_pos,
-					label,
-					HORIZONTAL_ALIGNMENT_LEFT,
-					-1,
-					font_size,
-					Color(0.05, 0.05, 0.08, alpha)
-				)
+				_draw_orb_at_rect(rect, orb_id, 1.0)
 			if head == cell and _session.has_active_drag():
 				draw_rect(rect.grow(-3.0), Color(1.0, 1.0, 1.0, 0.85), false, 3.0)
+	# --- Moving layer: continuous token interpolation (Gravity / Refill / Respawn) ---
+	if presenting:
+		_draw_moving_tokens(cell_size)
+
+
+func _draw_moving_tokens(_cell_size: float) -> void:
+	if _presenter.phase == ResolutionPresenter.Phase.GRAVITY:
+		for item in _presenter.gravity_moves:
+			var mv: GravityMoveTrace = item
+			var center := _presenter.gravity_token_center(mv, _geometry)
+			var rect := _token_rect_at_center(center, mv.is_rock())
+			if mv.is_rock():
+				_draw_rock_at_rect(rect, Color(0.45, 0.45, 0.48), mv.rock_hp())
+			else:
+				_draw_orb_at_rect(rect, mv.orb_id(), 1.0)
+		return
+	if _presenter.phase == ResolutionPresenter.Phase.REFILL:
+		for item in _presenter.refill_cells:
+			var rf: RefillTrace = item
+			var center := _presenter.refill_token_center(rf, _geometry)
+			var rect := _token_rect_at_center(center, false)
+			_draw_orb_at_rect(rect, rf.orb_id(), 1.0)
+		return
+	if (
+		_presenter.phase == ResolutionPresenter.Phase.RESPAWN_WARN
+		or _presenter.phase == ResolutionPresenter.Phase.RESPAWN_SHOW
+	):
+		for pos in _presenter.spawn_cells:
+			var center := _presenter.spawn_token_center(pos, _geometry)
+			var rect := _token_rect_at_center(center, true)
+			var border := Color(0.95, 0.75, 0.25) if _presenter.phase == ResolutionPresenter.Phase.RESPAWN_WARN else Color(0.20, 0.20, 0.22)
+			_draw_rock_at_rect(rect, Color(0.45, 0.45, 0.48), 2, border)
+
+
+func _token_rect_at_center(center: Vector2, is_rock: bool) -> Rect2:
+	var cs := _geometry.cell_size()
+	var inset_frac := 0.08 if is_rock else 0.12
+	var side := cs * (1.0 - inset_frac * 2.0)
+	return Rect2(center - Vector2(side, side) * 0.5, Vector2(side, side))
+
+
+func _draw_orb_at_rect(inset: Rect2, orb_id: int, alpha: float) -> void:
+	var fill := _orb_color(orb_id)
+	fill.a = alpha
+	draw_rect(inset, fill, true)
+	var label := _orb_symbol(orb_id)
+	var font := ThemeDB.fallback_font
+	var font_size := int(maxi(12, int(inset.size.x * 0.35)))
+	var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var text_pos := inset.position + (inset.size - text_size) * 0.5 + Vector2(0, text_size.y * 0.8)
+	draw_string(
+		font,
+		text_pos,
+		label,
+		HORIZONTAL_ALIGNMENT_LEFT,
+		-1,
+		font_size,
+		Color(0.05, 0.05, 0.08, alpha)
+	)
+
+
+func _draw_rock_at_rect(inset: Rect2, fill: Color, hp: int, border: Color = Color(0.20, 0.20, 0.22)) -> void:
+	draw_rect(inset, fill, true)
+	draw_rect(inset, border, false, 2.0)
+	var font := ThemeDB.fallback_font
+	var font_size := int(maxi(12, int(inset.size.x * 0.36)))
+	var label := "R%d" % hp if hp > 0 else "R"
+	var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var text_pos := inset.position + (inset.size - text_size) * 0.5 + Vector2(0, text_size.y * 0.8)
+	draw_string(font, text_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0.95, 0.95, 0.92))
 
 
 func _draw_ready_placeholder() -> void:
