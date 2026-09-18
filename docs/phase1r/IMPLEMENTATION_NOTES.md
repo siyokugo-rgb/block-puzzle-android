@@ -12,8 +12,8 @@
 | **R-E** | PuzzleSession / timer / mid-drag forced release / provisional Score |
 | **R-F** | Minimal Puzzle UI / Android touch / playable Score Attack / Dual Timer — **MERGED** (#16) |
 | **Gate 1** | **PASS WITH FINDINGS** (human device eval; not market proof) |
-| **R-G** | Minimal ROCK Obstacle vertical slice (Gate 2 A/B) |
-| **Gate 2** | After R-G Android COMPLETE — OFF vs ROCK comparison |
+| **R-G** | Minimal ROCK Obstacle vertical slice — **COMPLETE** (#17) |
+| **Gate 2** | NOT STARTED — OFF vs ROCK comparison after R-G |
 | Post R-F | Legacy Block Placement deletion decision |
 | Post Gate 2 | LOCK / SLIME / Rescue (not before) |
 
@@ -524,11 +524,15 @@ Hypothesis only — do **not** add `ObstacleType.SLIME` / GDScript / tests in R-
 
 ### Status
 
-- **FIX FIRST** (board-wide Initial ROCK + non-piercing board opening) → **VERIFY FIRST** after APK;
-  **Gate 2 NOT STARTED**
+- **COMPLETE** — PR #17 merge-commit to `main` (`635085f`); feature HEAD `67bd68c`
+- Android PASS: board-wide Initial ROCK, Opening settle, Countdown, Continuous Fall, HP2,
+  Gravity/Refill/Respawn, 58～60fps, crashなし
+- Tests: **248 PASS**
+- Prerelease: `phase-rg-boardwide-rock-test-67bd68c`
+- **Gate 2 NOT STARTED**
 - Note for Gate 2 / Score redesign: long cascade presentation consumes Score Attack time by design (after GO)
-- Do **not** merge R-G to main until Gate 2 human comparison
-- Do **not** start LOCK / SLIME / Rescue
+- Do **not** start LOCK / SLIME / Rescue before Gate 2
+- ROCK = 製品標準候補; Obstacle OFF = DEV / QA / Gate baseline
 
 ### Out of R-G scope
 
