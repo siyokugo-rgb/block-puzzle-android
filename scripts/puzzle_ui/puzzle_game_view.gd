@@ -4,7 +4,9 @@ extends Control
 ## Phase R-F/R-G: minimal Score Attack view. PuzzleSession is the only game-state SoT.
 ## Pre-session READY is UI-only (no PuzzleSession.State.READY). Session starts on START/Restart.
 ## Pre-game (OPENING + COUNTDOWN) freezes Session Timer; gameplay presentation keeps it live.
+## Normal START/Restart pick a new Session seed; PuzzleSession remains deterministic for a given seed.
 
+## Fixed seed for tests / Gate comparison / bug reproduction (not normal play).
 const DEV_SEED := 42
 const DEV_WIDTH := 6
 const DEV_HEIGHT := 6
@@ -20,6 +22,10 @@ const PRESTART_COUNTDOWN_MS := 3000.0
 const COUNTDOWN_DIGIT_MS := 1000.0
 ## Non-blocking GO overlay after countdown; Session/input already live.
 const GO_OVERLAY_MS := 400.0
+## Normal-play Session seed range (positive int; QA-friendly).
+const SESSION_SEED_MIN := 1
+const SESSION_SEED_MAX := 2147483647
+const MAX_SEED_RETRY := 4
 
 enum StartPhase {
 	READY,
@@ -42,6 +48,9 @@ var _drop_transition_spike: bool = true
 var _start_phase: int = StartPhase.READY
 var _countdown_elapsed_ms: float = 0.0
 var _go_overlay_remaining_ms: float = 0.0
+## Normal-play seed source (independent of domain Orb/Obstacle RNG).
+var _session_seed_rng := RandomNumberGenerator.new()
+var _current_session_seed: int = 0
 var _hud: VBoxContainer = null
 var _score_label: Label = null
 var _session_timer_label: Label = null
@@ -49,6 +58,7 @@ var _move_timer_label: Label = null
 var _rock_label: Label = null
 var _state_label: Label = null
 var _note_label: Label = null
+var _seed_label: Label = null
 var _duration_row: HBoxContainer = null
 var _duration_buttons: Dictionary = {} # ms -> Button
 var _obstacle_row: HBoxContainer = null
@@ -67,6 +77,7 @@ func _ready() -> void:
 	focus_mode = Control.FOCUS_ALL
 	# Reinforce project.godot run/max_fps (Godot 4.7 Engine.max_fps).
 	Engine.max_fps = TARGET_FPS
+	_session_seed_rng.randomize()
 	_build_hud()
 	_enter_ready()
 	set_process(true)
@@ -117,11 +128,37 @@ func select_duration(ms: int) -> void:
 
 
 func start_selected_session() -> void:
-	_start_session(_duration_ms)
+	_start_session(_duration_ms, _next_session_seed())
 
 
 func restart_selected_session() -> void:
-	_start_session(_duration_ms)
+	_start_session(_duration_ms, _next_session_seed())
+
+
+## Explicit seed for tests / Gate 2 / bug reproduction. Not used by normal START/Restart.
+func start_session_with_seed(seed: int, duration_ms: int = -1) -> void:
+	var dur := _duration_ms if duration_ms < 0 else duration_ms
+	_start_session(dur, seed)
+
+
+func current_session_seed() -> int:
+	return _current_session_seed
+
+
+## Next normal-play Session seed; never equals previous `_current_session_seed`.
+func _next_session_seed() -> int:
+	var candidate := _session_seed_rng.randi_range(SESSION_SEED_MIN, SESSION_SEED_MAX)
+	var tries := 0
+	while candidate == _current_session_seed and tries < MAX_SEED_RETRY:
+		candidate = _session_seed_rng.randi_range(SESSION_SEED_MIN, SESSION_SEED_MAX)
+		tries += 1
+	if candidate == _current_session_seed:
+		# Bounded fallback: always a different in-range value (not crypto).
+		if _current_session_seed >= SESSION_SEED_MAX:
+			candidate = SESSION_SEED_MIN
+		else:
+			candidate = _current_session_seed + 1
+	return candidate
 
 
 func has_playable_session() -> bool:
@@ -257,14 +294,12 @@ func _build_hud() -> void:
 	_restart_button.pressed.connect(_on_restart_pressed)
 	_hud.add_child(_restart_button)
 
-	var seed_label := Label.new()
-	seed_label.text = "DEV seed=%d · 6×6 · 5 OrbTypes · Move %.1fs" % [
-		DEV_SEED,
-		float(PuzzleSession.MOVE_DURATION_MS) / 1000.0,
-	]
-	seed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	seed_label.add_theme_font_size_override("font_size", 12)
-	_hud.add_child(seed_label)
+	_seed_label = Label.new()
+	_seed_label.name = "DevSeedLabel"
+	_seed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_seed_label.add_theme_font_size_override("font_size", 12)
+	_hud.add_child(_seed_label)
+	_refresh_seed_label()
 
 	_board_area = Control.new()
 	_board_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -318,6 +353,7 @@ func _enter_ready() -> void:
 	_refresh_duration_buttons()
 	_refresh_obstacle_buttons()
 	_refresh_action_buttons()
+	_refresh_seed_label()
 	_refresh_hud()
 	queue_redraw()
 
@@ -343,12 +379,13 @@ func _on_restart_pressed() -> void:
 	restart_selected_session()
 
 
-func _start_session(duration_ms: int) -> void:
+func _start_session(duration_ms: int, session_seed: int) -> void:
 	_duration_ms = duration_ms
+	_current_session_seed = session_seed
 	_session = PuzzleSession.create_score_attack(
 		DEV_WIDTH,
 		DEV_HEIGHT,
-		DEV_SEED,
+		session_seed,
 		duration_ms,
 		CascadeResolver.MAX_CASCADE_STEPS,
 		_obstacle_mode
@@ -366,6 +403,7 @@ func _start_session(duration_ms: int) -> void:
 	_refresh_duration_buttons()
 	_refresh_obstacle_buttons()
 	_refresh_action_buttons()
+	_refresh_seed_label()
 	# ROCK: opening drop first (pre-game). OFF: skip straight to countdown.
 	if _try_begin_opening_rock_presentation():
 		_start_phase = StartPhase.OPENING
@@ -463,11 +501,25 @@ func _refresh_obstacle_buttons() -> void:
 	for mode in _obstacle_buttons.keys():
 		var btn: Button = _obstacle_buttons[mode]
 		var selected: bool = int(mode) == _obstacle_mode
+		# OFF is DEV/QA/Gate baseline — not the product-standard mode.
 		if int(mode) == PuzzleSession.ObstacleMode.OFF:
-			btn.text = "Obstacle OFF ★" if selected else "Obstacle OFF"
+			btn.text = "Obstacle OFF (DEV) ★" if selected else "Obstacle OFF (DEV)"
 		else:
 			btn.text = "ROCK ★" if selected else "ROCK"
 		btn.disabled = false
+
+
+func _refresh_seed_label() -> void:
+	if _seed_label == null:
+		return
+	var move_s := float(PuzzleSession.MOVE_DURATION_MS) / 1000.0
+	if is_awaiting_start() or _session == null:
+		_seed_label.text = "DEV · Seed: RANDOM · 6×6 · Move %.1fs" % move_s
+	else:
+		_seed_label.text = "DEV · Seed: %d · 6×6 · Move %.1fs" % [
+			_session.session_seed(),
+			move_s,
+		]
 
 
 func _refresh_action_buttons() -> void:
@@ -739,14 +791,16 @@ func _refresh_hud() -> void:
 			_rock_label.text = (
 				"ROCK: --- (ON at START)"
 				if _obstacle_mode == PuzzleSession.ObstacleMode.ROCK
-				else "ROCK: OFF"
+				else "ROCK: OFF (DEV baseline)"
 			)
 		_state_label.text = "State: READY"
 		_note_label.text = "READY — Pick duration / Obstacle and press START"
+		_refresh_seed_label()
 		_refresh_action_buttons()
 		return
 	if _session == null:
 		return
+	_refresh_seed_label()
 	_score_label.text = "Score: %d" % _session.score()
 	var session_sec := float(_session.remaining_ms()) / 1000.0
 	_session_timer_label.text = "Session: %.1fs" % session_sec
@@ -759,7 +813,7 @@ func _refresh_hud() -> void:
 		if _session.obstacle_mode() == PuzzleSession.ObstacleMode.ROCK:
 			_rock_label.text = "ROCK: %d" % _session.rock_count()
 		else:
-			_rock_label.text = "ROCK: OFF"
+			_rock_label.text = "ROCK: OFF (DEV)"
 	match _start_phase:
 		StartPhase.OPENING:
 			_state_label.text = "State: OPENING"

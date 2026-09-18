@@ -465,6 +465,11 @@ improve route thinking / replayability without becoming pure annoyance?
 - Gravity / refill / respawn: **continuous moving-token** layer (trace SoT → pixel lerp);
   static layer suppresses sources/targets until phase-end commit (no teleport / double-draw)
 - Gravity / refill / respawn visuals are **top → down only** (no horizontal / upward / overshoot)
+- DEV A/B: Obstacle **OFF (DEV/QA/Gate baseline)** | **ROCK** (product-standard candidate, default)
+- ROCK: standard gameplay candidate for Gate 2 evaluation
+- Obstacle OFF: control / baseline only — not the intended product-normal mode
+- Normal START / Restart: **new Session seed** each round (`_session_seed_rng`); PuzzleSession stays deterministic per seed
+- Explicit `start_session_with_seed(seed)` / `create_score_attack(..., seed)` for tests / Gate / reproduction
 - START opening: seeded initial R2 rocks drop from above into top-row targets (same respawn-style path)
 - **Pre-game:** OPENING + 3·2·1 countdown (`PRESTART_COUNTDOWN_MS=3000`) — Session Timer **frozen**; board input blocked
 - **GO!** (`GO_OVERLAY_MS=400`, non-blocking): Session Timer **starts**; input enabled; mapper cleared (no touch carry-over)
@@ -473,16 +478,26 @@ improve route thinking / replayability without becoming pure annoyance?
 - Render target: **60fps** (`application/run/max_fps=60` + `Engine.max_fps`); animations stay delta_ms-based
 - DEV-only FPS overlay (`SHOW_DEV_FPS`, ~500ms sample) — not production UI
 - Countdown overlay Label is created once and text-updated (not rebuilt each frame)
+- DEV seed HUD shows `RANDOM` on READY and the live Session seed after START
 
 ### DEV A/B
 
-- READY: Obstacle **OFF** | **ROCK** (default ROCK); selection only until START
+- READY: Obstacle **OFF (DEV)** | **ROCK** (default ROCK = product-standard candidate)
 - ROCK initial layout (Gate 2 DEV): **3 unique top-row columns** via Obstacle RNG
   (`pick_unique_columns`, sorted for placement); all HP=2
-  — same session seed → same columns; Restart reuses DEV seed 42
-- Same seed 42 / Session 60s / Move 2.0s / 6×6 / 5 OrbTypes
+  — same session seed → same columns; normal Restart uses a **new** Session seed
+- Explicit seed 42 remains available for tests / Gate comparison
+- Session 60s / Move 2.0s / 6×6 / 5 OrbTypes
 - HUD: `ROCK: N` remaining count; cells draw gray + `"R2"` / `"R1"`
+- DEV seed line: live Session seed (not fixed 42 on normal play)
 - DEV FPS: corner `FPS` / `Frame ms` (not production)
+
+### Product direction (docs)
+
+- Intended core: short Score Attack + Move Timer + **dynamic Obstacles** that shape route decisions
+- Obstacle OFF is a measurement baseline, not the finished product mode
+- If ROCK underperforms Gate 2, prefer Obstacle design iteration over deleting Obstacles
+- Do **not** start LOCK / SLIME / Rescue before Gate 2
 
 ### Future — SLIME (docs only; not implemented)
 
@@ -496,7 +511,7 @@ Hypothesis only — do **not** add `ObstacleType.SLIME` / GDScript / tests in R-
 
 ### Status
 
-- **FIX FIRST** (pre-game 3·2·1 countdown + GO) → **VERIFY FIRST** after APK;
+- **FIX FIRST** (random Session seed on START/Restart) → **VERIFY FIRST** after APK;
   **Gate 2 NOT STARTED**
 - Note for Gate 2 / Score redesign: long cascade presentation consumes Score Attack time by design (after GO)
 - Do **not** merge R-G to main until Gate 2 human comparison
