@@ -404,8 +404,8 @@ func _start_session(duration_ms: int, session_seed: int) -> void:
 	_refresh_obstacle_buttons()
 	_refresh_action_buttons()
 	_refresh_seed_label()
-	# ROCK: opening drop first (pre-game). OFF: skip straight to countdown.
-	if _try_begin_opening_rock_presentation():
+	# Pre-game: settle final board tokens from above (ROCK ON and OFF).
+	if _try_begin_board_opening():
 		_start_phase = StartPhase.OPENING
 	else:
 		_begin_countdown()
@@ -413,37 +413,16 @@ func _start_session(duration_ms: int, session_seed: int) -> void:
 	queue_redraw()
 
 
-## Presentation-only: initial R2 rocks drop from above into seeded top-row columns.
-## Pre-game: Session Timer frozen while opening plays.
-func _try_begin_opening_rock_presentation() -> bool:
+## Presentation-only: final Orb/ROCK settle from above without piercing (column order preserved).
+## Domain already holds final board; Session Timer frozen while opening plays.
+func _try_begin_board_opening() -> bool:
 	if _session == null or not _session.is_valid():
 		return false
-	if _session.obstacle_mode() != PuzzleSession.ObstacleMode.ROCK:
-		return false
-	var positions := _session.initial_rock_positions()
-	if positions.is_empty():
-		return false
-	var before_orbs: Array = _session.board_snapshot()
-	var before_obs: Array = _session.obstacle_snapshot()
-	var before_hp: Array = _session.obstacle_hp_snapshot()
-	var spawns: Array = []
-	for pos in positions:
-		before_obs[pos.y][pos.x] = ObstacleType.Id.NONE
-		before_hp[pos.y][pos.x] = 0
-		spawns.append(RockSpawnTrace.create(pos, PuzzleCell.ROCK_INITIAL_HP))
-	var move := SessionMoveResult.resolved(
-		0,
-		[],
-		0,
-		_session.score(),
-		false,
-		before_orbs,
-		before_obs,
-		before_hp,
-		[],
-		spawns
+	_presenter.begin_board_opening(
+		_session.board_snapshot(),
+		_session.obstacle_snapshot(),
+		_session.obstacle_hp_snapshot()
 	)
-	_presenter.begin(move)
 	return _presenter.is_busy()
 
 
@@ -828,7 +807,7 @@ func _refresh_hud() -> void:
 			_state_label.text = "State: READY"
 	var note := _last_move_note
 	if _start_phase == StartPhase.OPENING:
-		note = "Opening — rocks dropping"
+		note = "Opening — board settling"
 	elif _start_phase == StartPhase.COUNTDOWN:
 		note = "Get ready — %d" % countdown_digit()
 	elif is_go_overlay_visible():
@@ -917,7 +896,10 @@ func _draw() -> void:
 
 
 func _draw_moving_tokens(_cell_size: float) -> void:
-	if _presenter.phase == ResolutionPresenter.Phase.GRAVITY:
+	if (
+		_presenter.phase == ResolutionPresenter.Phase.GRAVITY
+		or _presenter.phase == ResolutionPresenter.Phase.BOARD_OPENING
+	):
 		for item in _presenter.gravity_moves:
 			var mv: GravityMoveTrace = item
 			var center := _presenter.gravity_token_center(mv, _geometry)

@@ -381,13 +381,19 @@ func test_ready_launch_helpers_and_start_flow() -> void:
 	assert_eq(view.selected_duration_ms(), 90000)
 	assert_true(view.is_awaiting_start())
 
-	# START creates session; OFF skips rock opening → COUNTDOWN (pre-game).
+	# START creates session; OFF settles orbs then COUNTDOWN (pre-game).
 	# R-F baseline uses Obstacle OFF.
 	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
 	view.select_duration(60000)
 	view.start_selected_session()
 	assert_false(view.is_awaiting_start())
 	assert_true(view.has_playable_session())
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.OPENING)
+	assert_false(view.board_input_enabled())
+	for _i in range(40):
+		if view.start_phase() != PuzzleGameView.StartPhase.OPENING:
+			break
+		view._process(0.05)
 	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.COUNTDOWN)
 	assert_false(view.board_input_enabled())
 	assert_eq(view._session.state(), PuzzleSession.State.IDLE)
@@ -408,6 +414,11 @@ func test_ready_launch_helpers_and_start_flow() -> void:
 	assert_eq(view._session.remaining_ms(), 59000)
 	view.restart_selected_session()
 	assert_true(view.has_playable_session())
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.OPENING)
+	for _i in range(40):
+		if view.start_phase() != PuzzleGameView.StartPhase.OPENING:
+			break
+		view._process(0.05)
 	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.COUNTDOWN)
 	assert_eq(view._session.remaining_ms(), 45000)
 	assert_eq(view._session.score(), 0)

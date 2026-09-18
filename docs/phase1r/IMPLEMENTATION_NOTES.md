@@ -455,6 +455,17 @@ improve route thinking / replayability without becoming pure annoyance?
 - Candidate: **top row only** (`y == 0`), no obstacle (orb may be present);
   replace with ROCK HP=2; mid-board spawn forbidden
 - No eligible top cell → keep pending, no ERROR; retry next valid move
+- **Gameplay respawn stays top-row drop** (distinct from Initial ROCK board-wide placement)
+
+### Initial ROCK (standard ROCK mode)
+
+- Count = 3, HP = 2; sample **3 unique cells from the full board** (`width × height`)
+  via Obstacle RNG (`pick_unique_cells`); placement order sorted **y asc, then x asc**
+- Same column may hold multiple ROCKs; same cell is forbidden; no fairness region constraints
+- Flow: OrbGenerator match-stable fill → Obstacle RNG pick → replace Orbs with ROCK HP2 →
+  MatchResolver re-check (fail-closed if invalid / matches)
+- Does **not** consume Orb RNG; `obstacle_seed = session_seed XOR 0x524F434B` continues into respawn
+- Same explicit session seed → same Orb board + same initial ROCK positions + same later Obstacle RNG
 
 ### Presentation
 
@@ -470,11 +481,12 @@ improve route thinking / replayability without becoming pure annoyance?
 - Obstacle OFF: control / baseline only — not the intended product-normal mode
 - Normal START / Restart: **new Session seed** each round (`_session_seed_rng`); PuzzleSession stays deterministic per seed
 - Explicit `start_session_with_seed(seed)` / `create_score_attack(..., seed)` for tests / Gate / reproduction
-- START opening: seeded initial R2 rocks drop from above into top-row targets (same respawn-style path)
+- **START board opening (ROCK ON and OFF):** presentation-only column settle of final Orb/ROCK
+  occupants from above (`BOARD_OPENING`, ~450ms parallel drop). Same-column relative order preserved —
+  ROCK must not pierce / overtake Orbs (and vice versa). Domain already holds the final board.
 - **Pre-game:** OPENING + 3·2·1 countdown (`PRESTART_COUNTDOWN_MS=3000`) — Session Timer **frozen**; board input blocked
 - **GO!** (`GO_OVERLAY_MS=400`, non-blocking): Session Timer **starts**; input enabled; mapper cleared (no touch carry-over)
 - After RUNNING: `presentation_busy` blocks **input** only; Session Timer still runs (not a gameplay SoT)
-- Obstacle OFF: skip opening → COUNTDOWN → GO
 - Render target: **60fps** (`application/run/max_fps=60` + `Engine.max_fps`); animations stay delta_ms-based
 - DEV-only FPS overlay (`SHOW_DEV_FPS`, ~500ms sample) — not production UI
 - Countdown overlay Label is created once and text-updated (not rebuilt each frame)
@@ -483,9 +495,10 @@ improve route thinking / replayability without becoming pure annoyance?
 ### DEV A/B
 
 - READY: Obstacle **OFF (DEV)** | **ROCK** (default ROCK = product-standard candidate)
-- ROCK initial layout (Gate 2 DEV): **3 unique top-row columns** via Obstacle RNG
-  (`pick_unique_columns`, sorted for placement); all HP=2
-  — same session seed → same columns; normal Restart uses a **new** Session seed
+- ROCK initial layout (Gate 2 DEV): **3 unique cells from the full 6×6 board** via Obstacle RNG
+  (`pick_unique_cells`, sorted y then x for placement); all HP=2
+  — same session seed → same positions; normal Restart uses a **new** Session seed
+  — Initial = board-wide random; gameplay respawn remains top-row drop
 - Explicit seed 42 remains available for tests / Gate comparison
 - Session 60s / Move 2.0s / 6×6 / 5 OrbTypes
 - HUD: `ROCK: N` remaining count; cells draw gray + `"R2"` / `"R1"`
@@ -511,7 +524,7 @@ Hypothesis only — do **not** add `ObstacleType.SLIME` / GDScript / tests in R-
 
 ### Status
 
-- **FIX FIRST** (random Session seed on START/Restart) → **VERIFY FIRST** after APK;
+- **FIX FIRST** (board-wide Initial ROCK + non-piercing board opening) → **VERIFY FIRST** after APK;
   **Gate 2 NOT STARTED**
 - Note for Gate 2 / Score redesign: long cascade presentation consumes Score Attack time by design (after GO)
 - Do **not** merge R-G to main until Gate 2 human comparison

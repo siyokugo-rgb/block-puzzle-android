@@ -474,8 +474,14 @@ func test_session_rock_layout_hp2_and_off_baseline() -> void:
 	assert_eq(rock.rock_count(), 3)
 	var positions := rock.initial_rock_positions()
 	assert_eq(positions.size(), PuzzleSession.INITIAL_ROCK_COUNT)
+	var seen: Dictionary = {}
 	for pos in positions:
-		assert_eq(pos.y, 0)
+		assert_gte(pos.x, 0)
+		assert_lt(pos.x, 6)
+		assert_gte(pos.y, 0)
+		assert_lt(pos.y, 6)
+		assert_false(seen.has(pos))
+		seen[pos] = true
 		assert_true(rock.is_rock_at(pos))
 		assert_eq(rock.orb_at(pos), -1)
 		assert_eq(rock.rock_hp_at(pos), 2)
@@ -512,7 +518,8 @@ func test_ready_helpers_support_obstacle_selection() -> void:
 	assert_eq(view._session.obstacle_mode(), PuzzleSession.ObstacleMode.ROCK)
 	assert_eq(view._session.rock_count(), 3)
 	for pos in view._session.initial_rock_positions():
-		assert_eq(pos.y, 0)
+		assert_gte(pos.y, 0)
+		assert_lt(pos.y, 6)
 		assert_eq(view._session.rock_hp_at(pos), 2)
 
 
@@ -779,8 +786,24 @@ func test_session_over_skips_spawn() -> void:
 	var session := PuzzleSession.create_score_attack(
 		6, 6, 3, 1000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
 	)
-	assert_true(session.begin_drag(Vector2i(0, 0)))
-	session.step_drag(Vector2i(1, 0))
+	# Board-wide Initial ROCK may occupy (0,0); pick any grabable Orb.
+	var drag_cell := Vector2i(-1, -1)
+	var next_cell := Vector2i(-1, -1)
+	for y in range(6):
+		for x in range(6):
+			var p := Vector2i(x, y)
+			if session.is_rock_at(p) or session.orb_at(p) < 0:
+				continue
+			var neighbor := Vector2i(x + 1, y)
+			if neighbor.x < 6 and not session.is_rock_at(neighbor) and session.orb_at(neighbor) >= 0:
+				drag_cell = p
+				next_cell = neighbor
+				break
+		if drag_cell.x >= 0:
+			break
+	assert_true(drag_cell.x >= 0)
+	assert_true(session.begin_drag(drag_cell))
+	session.step_drag(next_cell)
 	session.advance_time(2000)
 	assert_eq(session.state(), PuzzleSession.State.SESSION_OVER)
 	assert_true(session.rock_count() <= PuzzleSession.TARGET_ROCK_COUNT)
@@ -1162,6 +1185,33 @@ func test_fps_target_and_dev_monitor_config() -> void:
 # --- Seeded random initial ROCK ---
 
 
+func test_pick_unique_cells_without_replacement() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = PuzzleSession.derive_obstacle_rng_seed(42)
+	var cells := PuzzleSession.pick_unique_cells(rng, 6, 6, 3)
+	assert_eq(cells.size(), 3)
+	var seen: Dictionary = {}
+	for pos in cells:
+		assert_gte(pos.x, 0)
+		assert_lt(pos.x, 6)
+		assert_gte(pos.y, 0)
+		assert_lt(pos.y, 6)
+		assert_false(seen.has(pos))
+		seen[pos] = true
+	# Sorted y then x.
+	assert_true(
+		cells[0].y < cells[1].y
+		or (cells[0].y == cells[1].y and cells[0].x < cells[1].x)
+	)
+	assert_true(
+		cells[1].y < cells[2].y
+		or (cells[1].y == cells[2].y and cells[1].x < cells[2].x)
+	)
+	var rng2 := RandomNumberGenerator.new()
+	rng2.seed = PuzzleSession.derive_obstacle_rng_seed(42)
+	assert_eq(PuzzleSession.pick_unique_cells(rng2, 6, 6, 3), cells)
+
+
 func test_pick_unique_columns_without_replacement() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = PuzzleSession.derive_obstacle_rng_seed(42)
@@ -1171,13 +1221,12 @@ func test_pick_unique_columns_without_replacement() -> void:
 	assert_true(cols[1] < cols[2])
 	assert_gte(cols[0], 0)
 	assert_lt(cols[2], 6)
-	# Same seed → same pick sequence when RNG is fresh.
 	var rng2 := RandomNumberGenerator.new()
 	rng2.seed = PuzzleSession.derive_obstacle_rng_seed(42)
 	assert_eq(PuzzleSession.pick_unique_columns(rng2, 6, 3), cols)
 
 
-func test_initial_rocks_seeded_top_row_unique_hp2() -> void:
+func test_initial_rocks_boardwide_unique_hp2() -> void:
 	var session := PuzzleSession.create_score_attack(
 		6, 6, 42, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
 	)
@@ -1186,21 +1235,27 @@ func test_initial_rocks_seeded_top_row_unique_hp2() -> void:
 	assert_eq(positions.size(), 3)
 	assert_eq(session.rock_count(), 3)
 	var seen: Dictionary = {}
+	var opening := MatchResolver.detect(session._board)
+	assert_true(opening.is_valid())
+	assert_false(opening.has_matches())
 	for pos in positions:
-		assert_eq(pos.y, 0)
 		assert_gte(pos.x, 0)
 		assert_lt(pos.x, 6)
-		assert_false(seen.has(pos.x))
-		seen[pos.x] = true
+		assert_gte(pos.y, 0)
+		assert_lt(pos.y, 6)
+		assert_false(seen.has(pos))
+		seen[pos] = true
 		assert_true(session.is_rock_at(pos))
 		assert_eq(session.rock_hp_at(pos), 2)
 		assert_eq(session.orb_at(pos), -1)
-	# Sorted by x.
-	assert_true(positions[0].x < positions[1].x)
-	assert_true(positions[1].x < positions[2].x)
+	# Sorted y then x.
+	assert_true(
+		positions[0].y < positions[1].y
+		or (positions[0].y == positions[1].y and positions[0].x < positions[1].x)
+	)
 
 
-func test_same_seed_same_initial_rock_columns() -> void:
+func test_same_seed_same_initial_rock_positions() -> void:
 	var a := PuzzleSession.create_score_attack(
 		6, 6, 42, 60000, CascadeResolver.MAX_CASCADE_STEPS, PuzzleSession.ObstacleMode.ROCK
 	)
@@ -1222,10 +1277,17 @@ func test_multiple_seeds_initial_rocks_always_valid() -> void:
 		assert_eq(positions.size(), 3)
 		var seen: Dictionary = {}
 		for pos in positions:
-			assert_eq(pos.y, 0)
-			assert_false(seen.has(pos.x))
-			seen[pos.x] = true
+			assert_gte(pos.x, 0)
+			assert_lt(pos.x, 6)
+			assert_gte(pos.y, 0)
+			assert_lt(pos.y, 6)
+			assert_false(seen.has(pos))
+			seen[pos] = true
 			assert_eq(session.rock_hp_at(pos), 2)
+			assert_eq(session.orb_at(pos), -1)
+		var opening := MatchResolver.detect(session._board)
+		assert_true(opening.is_valid())
+		assert_false(opening.has_matches())
 
 
 func test_initial_rocks_do_not_consume_orb_rng() -> void:
@@ -1246,7 +1308,7 @@ func test_initial_rocks_do_not_consume_orb_rng() -> void:
 			assert_eq(off.orb_at(pos), rock.orb_at(pos))
 
 
-func test_opening_rock_presentation_blocks_input_timer_frozen() -> void:
+func test_opening_board_settle_blocks_input_timer_frozen() -> void:
 	var view := PuzzleGameView.new()
 	add_child_autofree(view)
 	view.select_obstacle_mode(PuzzleSession.ObstacleMode.ROCK)
@@ -1256,36 +1318,90 @@ func test_opening_rock_presentation_blocks_input_timer_frozen() -> void:
 	assert_true(view.is_presentation_busy())
 	assert_false(view.board_input_enabled())
 	assert_eq(view._session.remaining_ms(), 60000)
+	assert_eq(view._presenter.phase, ResolutionPresenter.Phase.BOARD_OPENING)
 	view._process(0.100)
 	# Pre-game opening: Session Timer frozen.
 	assert_eq(view._session.remaining_ms(), 60000)
-	assert_eq(view._session.move_remaining_ms(), 0)
-	assert_false(view._session.has_active_move_timer())
-	assert_true(view.is_presentation_busy())
 	assert_false(view.board_input_enabled())
-	assert_true(
-		view._presenter.phase == ResolutionPresenter.Phase.RESPAWN_WARN
-		or view._presenter.phase == ResolutionPresenter.Phase.RESPAWN_SHOW
-	)
-	var cell_size := 40.0
+	assert_gt(view._presenter.gravity_moves.size(), 0)
+	# Mid-opening: destinations empty in vis; tokens on moving layer.
 	var pos: Vector2i = view._session.initial_rock_positions()[0]
-	var warn := view._presenter.spawn_draw_offset(pos, cell_size)
-	assert_eq(warn.x, 0.0)
-	assert_lt(warn.y, 0.0)
-	assert_true(view._presenter.is_spawn_target(pos))
+	assert_true(view._presenter.is_gravity_destination(pos))
 	assert_false(view._presenter.is_rock(pos))
-	# Finish opening → COUNTDOWN (still pre-game).
+	var geom := BoardGeometry.create(Vector2.ZERO, 40.0, 6, 6)
+	var rock_mv: GravityMoveTrace = null
+	for item in view._presenter.gravity_moves:
+		var mv: GravityMoveTrace = item
+		if mv.is_rock() and mv.to_cell() == pos:
+			rock_mv = mv
+			break
+	assert_ne(rock_mv, null)
+	assert_eq(rock_mv.rock_hp(), 2)
+	assert_eq(rock_mv.to_cell().x, rock_mv.from_cell().x) # no horizontal
+	assert_gt(rock_mv.to_cell().y, rock_mv.from_cell().y) # downward
+	var mid_c := view._presenter.gravity_token_center(rock_mv, geom)
+	var from_c := geom.cell_rect(rock_mv.from_cell()).get_center()
+	var to_c := geom.cell_rect(rock_mv.to_cell()).get_center()
+	assert_gt(mid_c.y, from_c.y)
+	assert_lt(mid_c.y, to_c.y)
+	# Finish opening → COUNTDOWN.
 	for _i in range(40):
 		if view.start_phase() != PuzzleGameView.StartPhase.OPENING:
 			break
 		view._process(0.05)
 	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.COUNTDOWN)
 	assert_false(view.is_presentation_busy())
-	assert_false(view.board_input_enabled())
 	assert_eq(view._session.remaining_ms(), 60000)
 	assert_eq(view.countdown_digit(), 3)
 	assert_true(view._session.is_rock_at(pos))
 	assert_eq(view._session.rock_hp_at(pos), 2)
+
+
+func test_opening_preserves_column_order_no_overtake() -> void:
+	var presenter := ResolutionPresenter.new()
+	var orbs: Array = [
+		[-1, OrbType.Id.ORB_0],
+		[-1, -1],
+		[-1, OrbType.Id.ORB_1],
+		[-1, -1],
+	]
+	var obs: Array = [
+		[ObstacleType.Id.ROCK, ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE, ObstacleType.Id.NONE],
+		[ObstacleType.Id.NONE, ObstacleType.Id.NONE],
+		[ObstacleType.Id.ROCK, ObstacleType.Id.NONE],
+	]
+	var hp: Array = [[2, 0], [0, 0], [0, 0], [1, 0]]
+	presenter.begin_board_opening(orbs, obs, hp)
+	assert_eq(presenter.phase, ResolutionPresenter.Phase.BOARD_OPENING)
+	var geom := BoardGeometry.create(Vector2.ZERO, 50.0, 2, 4)
+	presenter.gravity_progress = 0.5
+	var rock_top: GravityMoveTrace = null
+	var rock_bot: GravityMoveTrace = null
+	var orb_mid: GravityMoveTrace = null
+	for item in presenter.gravity_moves:
+		var mv: GravityMoveTrace = item
+		if mv.to_cell() == Vector2i(0, 0):
+			rock_top = mv
+		elif mv.to_cell() == Vector2i(0, 3):
+			rock_bot = mv
+		elif mv.to_cell() == Vector2i(1, 2):
+			orb_mid = mv
+	assert_ne(rock_top, null)
+	assert_ne(rock_bot, null)
+	assert_ne(orb_mid, null)
+	var yt := presenter.gravity_token_center(rock_top, geom).y
+	var yb := presenter.gravity_token_center(rock_bot, geom).y
+	assert_lt(yt, yb) # top rock stays above bottom rock
+	assert_eq(rock_top.rock_hp(), 2)
+	assert_eq(rock_bot.rock_hp(), 1)
+	assert_eq(orb_mid.orb_id(), OrbType.Id.ORB_1)
+	presenter.advance(ResolutionPresenter.OPENING_MS)
+	assert_false(presenter.is_busy())
+	assert_true(presenter.is_rock(Vector2i(0, 0)))
+	assert_true(presenter.is_rock(Vector2i(0, 3)))
+	assert_eq(presenter.orb_at(Vector2i(1, 2)), OrbType.Id.ORB_1)
+	assert_eq(presenter.orb_at(Vector2i(1, 0)), OrbType.Id.ORB_0)
 
 
 func test_countdown_3_2_1_go_starts_session_clock() -> void:
@@ -1294,6 +1410,12 @@ func test_countdown_3_2_1_go_starts_session_clock() -> void:
 	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
 	view.select_duration(60000)
 	view.start_selected_session()
+	# OFF also settles the Orb board via board opening.
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.OPENING)
+	for _i in range(40):
+		if view.start_phase() != PuzzleGameView.StartPhase.OPENING:
+			break
+		view._process(0.05)
 	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.COUNTDOWN)
 	assert_eq(view.countdown_digit(), 3)
 	assert_eq(view._session.remaining_ms(), 60000)
@@ -1328,6 +1450,10 @@ func test_countdown_durations_go_full_value() -> void:
 		view.select_duration(dur)
 		view.start_selected_session()
 		assert_eq(view._session.remaining_ms(), dur)
+		for _i in range(40):
+			if view.start_phase() != PuzzleGameView.StartPhase.OPENING:
+				break
+			view._process(0.05)
 		view._process(3.0)
 		assert_eq(view.start_phase(), PuzzleGameView.StartPhase.RUNNING)
 		assert_eq(view._session.remaining_ms(), dur)
@@ -1338,6 +1464,10 @@ func test_countdown_clears_mapper_no_touch_carryover() -> void:
 	add_child_autofree(view)
 	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
 	view.start_selected_session()
+	for _i in range(40):
+		if view.start_phase() != PuzzleGameView.StartPhase.OPENING:
+			break
+		view._process(0.05)
 	# Simulate a stuck press ownership during countdown (must not carry into GO).
 	view._mapper.begin_touch(0)
 	assert_ne(view._mapper.source, GridInputMapper.PointerSource.NONE)
@@ -1352,6 +1482,10 @@ func test_countdown_background_pauses_and_resumes() -> void:
 	add_child_autofree(view)
 	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
 	view.start_selected_session()
+	for _i in range(40):
+		if view.start_phase() != PuzzleGameView.StartPhase.OPENING:
+			break
+		view._process(0.05)
 	assert_eq(view.countdown_digit(), 3)
 	view._process(0.500)
 	var mid := view._countdown_elapsed_ms
@@ -1672,16 +1806,21 @@ func test_respawn_commit_only_on_landing() -> void:
 	assert_eq(presenter.rock_hp_at(sp.pos()), 2)
 
 
-func test_opening_off_has_no_rock_drop() -> void:
+func test_opening_off_has_board_settle_no_rocks() -> void:
 	var view := PuzzleGameView.new()
 	add_child_autofree(view)
 	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
 	view.start_selected_session()
 	assert_true(view.has_playable_session())
-	assert_false(view.is_presentation_busy())
-	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.COUNTDOWN)
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.OPENING)
+	assert_true(view.is_presentation_busy())
 	assert_eq(view._session.rock_count(), 0)
 	assert_eq(view._session.initial_rock_positions().size(), 0)
+	for _i in range(40):
+		if view.start_phase() != PuzzleGameView.StartPhase.OPENING:
+			break
+		view._process(0.05)
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.COUNTDOWN)
 
 
 func test_restart_uses_new_session_seed() -> void:
@@ -1769,9 +1908,12 @@ func test_random_sessions_always_valid_rock_layout() -> void:
 		assert_eq(view._session.rock_count(), 3)
 		var seen: Dictionary = {}
 		for pos in view._session.initial_rock_positions():
-			assert_eq(pos.y, 0)
-			assert_false(seen.has(pos.x))
-			seen[pos.x] = true
+			assert_gte(pos.x, 0)
+			assert_lt(pos.x, 6)
+			assert_gte(pos.y, 0)
+			assert_lt(pos.y, 6)
+			assert_false(seen.has(pos))
+			seen[pos] = true
 			assert_eq(view._session.rock_hp_at(pos), 2)
 			assert_eq(view._session.orb_at(pos), -1)
 		assert_eq(view._session.remaining_ms(), 60000)
@@ -1804,6 +1946,11 @@ func test_countdown_still_works_with_random_seed() -> void:
 	view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
 	view.start_selected_session()
 	var seed := view._session.session_seed()
+	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.OPENING)
+	for _i in range(40):
+		if view.start_phase() != PuzzleGameView.StartPhase.OPENING:
+			break
+		view._process(0.05)
 	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.COUNTDOWN)
 	assert_eq(view._session.remaining_ms(), 60000)
 	view._process(3.0)

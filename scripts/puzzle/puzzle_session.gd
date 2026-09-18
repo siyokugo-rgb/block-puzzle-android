@@ -57,7 +57,7 @@ var _initial_rock_positions: Array[Vector2i] = []
 
 ## Create a Score Attack session. Uses one OrbGenerator for fill + later cascade refill.
 ## Optional max_cascade_steps is an internal safety seam (default 128); not a gameplay flag.
-## obstacle_mode: OFF = R-F baseline; ROCK = seeded random top-row rocks after stable fill.
+## obstacle_mode: OFF = DEV/QA/Gate baseline; ROCK = board-wide seeded random rocks after stable fill.
 static func create_score_attack(
 	width: int,
 	height: int,
@@ -152,7 +152,8 @@ static func derive_obstacle_rng_seed(session_seed: int) -> int:
 	return session_seed ^ OBSTACLE_RNG_SEED_XOR
 
 
-## Without-replacement column sample via Obstacle RNG. Sorted ascending for stable placement.
+## Without-replacement column sample via Obstacle RNG. Sorted ascending.
+## Kept for utility / legacy tests; initial ROCK uses pick_unique_cells.
 static func pick_unique_columns(
 	rng: RandomNumberGenerator,
 	width: int,
@@ -172,7 +173,35 @@ static func pick_unique_columns(
 	return out
 
 
-## Place `count` R2 rocks on top row using Obstacle RNG. Empty array on failure.
+## Without-replacement board-wide cell sample. Sorted y asc, then x asc (no extra RNG).
+static func pick_unique_cells(
+	rng: RandomNumberGenerator,
+	width: int,
+	height: int,
+	count: int
+) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if rng == null or width <= 0 or height <= 0 or count <= 0:
+		return out
+	if count > width * height:
+		return out
+	var candidates: Array[Vector2i] = []
+	for y in range(height):
+		for x in range(width):
+			candidates.append(Vector2i(x, y))
+	for _i in range(count):
+		var idx := rng.randi_range(0, candidates.size() - 1)
+		out.append(candidates[idx])
+		candidates.remove_at(idx)
+	out.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		if a.y != b.y:
+			return a.y < b.y
+		return a.x < b.x
+	)
+	return out
+
+
+## Place `count` R2 rocks on unique board-wide cells using Obstacle RNG. Empty on failure.
 static func _place_initial_rocks(
 	board: PuzzleBoard,
 	rng: RandomNumberGenerator,
@@ -181,11 +210,10 @@ static func _place_initial_rocks(
 	var placed: Array[Vector2i] = []
 	if board == null or not board.is_valid() or rng == null:
 		return placed
-	var columns := pick_unique_columns(rng, board.width(), count)
-	if columns.size() != count:
+	var cells := pick_unique_cells(rng, board.width(), board.height(), count)
+	if cells.size() != count:
 		return placed
-	for x in columns:
-		var pos := Vector2i(x, 0)
+	for pos in cells:
 		if not board.set_rock(pos):
 			return []
 		placed.append(pos)

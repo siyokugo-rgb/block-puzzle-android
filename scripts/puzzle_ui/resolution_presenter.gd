@@ -13,6 +13,7 @@ enum Phase {
 	REFILL,
 	RESPAWN_WARN,
 	RESPAWN_SHOW,
+	BOARD_OPENING,
 	DONE,
 }
 
@@ -33,6 +34,10 @@ const RESPAWN_WARN_MS := 120.0
 const RESPAWN_SHOW_MS := 180.0
 ## Presentation-only travel for respawn drop (cells above top row).
 const RESPAWN_DROP_CELLS := 1.5
+## Pre-game board settle: all final tokens drop from this many cells above their target.
+const OPENING_DROP_CELLS := 6
+## Parallel column settle duration (DEV; ~300–600ms band).
+const OPENING_MS := 450.0
 
 var busy: bool = false
 var phase: Phase = Phase.IDLE
@@ -112,6 +117,57 @@ func begin(move: SessionMoveResult) -> void:
 		_begin_step_match()
 
 
+## Pre-game: settle final Orb/ROCK occupants from above without piercing (order preserved).
+## Domain already holds the final board; vis starts empty and commits at phase end.
+func begin_board_opening(final_orbs: Array, final_obstacles: Array, final_hp: Array) -> void:
+	busy = false
+	phase = Phase.IDLE
+	steps.clear()
+	rock_spawns.clear()
+	highlight_cells.clear()
+	rock_hit_cells.clear()
+	flash_rocks.clear()
+	spawn_cells.clear()
+	refill_cells.clear()
+	gravity_moves.clear()
+	vis_orbs = _copy_grid(final_orbs)
+	vis_obstacles = _copy_grid(final_obstacles)
+	vis_hp = _copy_grid(final_hp)
+	if vis_orbs.is_empty():
+		return
+	var height := vis_orbs.size()
+	var width := 0
+	if height > 0 and typeof(vis_orbs[0]) == TYPE_ARRAY:
+		width = (vis_orbs[0] as Array).size()
+	if width <= 0:
+		return
+	# Empty static layer; tokens live only on the moving layer until landing.
+	for y in range(height):
+		var row_o: Array = vis_orbs[y]
+		var row_b: Array = vis_obstacles[y]
+		var row_h: Array = vis_hp[y]
+		for x in range(width):
+			var to := Vector2i(x, y)
+			var from := Vector2i(x, y - OPENING_DROP_CELLS)
+			if ObstacleType.is_rock(int(row_b[x])):
+				gravity_moves.append(GravityMoveTrace.create_rock(from, to, int(row_h[x])))
+			elif int(row_o[x]) >= 0:
+				gravity_moves.append(GravityMoveTrace.create_orb(from, to, int(row_o[x])))
+			row_o[x] = -1
+			row_b[x] = ObstacleType.Id.NONE
+			row_h[x] = 0
+		vis_orbs[y] = row_o
+		vis_obstacles[y] = row_b
+		vis_hp[y] = row_h
+	if gravity_moves.is_empty():
+		return
+	phase = Phase.BOARD_OPENING
+	phase_elapsed_ms = 0.0
+	gravity_progress = 0.0
+	gravity_duration_ms = OPENING_MS
+	busy = true
+
+
 func advance(delta_ms: float) -> void:
 	if not busy:
 		return
@@ -131,6 +187,12 @@ func advance(delta_ms: float) -> void:
 				gravity_progress = 1.0
 				_commit_gravity_to_vis()
 				_begin_refill()
+		Phase.BOARD_OPENING:
+			gravity_progress = clampf(phase_elapsed_ms / gravity_duration_ms, 0.0, 1.0)
+			if phase_elapsed_ms >= gravity_duration_ms:
+				gravity_progress = 1.0
+				_commit_gravity_to_vis()
+				_finish()
 		Phase.REFILL:
 			refill_progress = clampf(phase_elapsed_ms / refill_duration_ms, 0.0, 1.0)
 			if phase_elapsed_ms >= refill_duration_ms:
@@ -185,9 +247,9 @@ func is_rock(pos: Vector2i) -> bool:
 	return ObstacleType.is_rock(obstacle_at(pos))
 
 
-## True while GRAVITY and `pos` is a moving-token source (static layer must not draw it).
+## True while GRAVITY / BOARD_OPENING and `pos` is a moving-token source.
 func is_gravity_source(pos: Vector2i) -> bool:
-	if phase != Phase.GRAVITY:
+	if phase != Phase.GRAVITY and phase != Phase.BOARD_OPENING:
 		return false
 	for item in gravity_moves:
 		var mv: GravityMoveTrace = item
@@ -196,9 +258,9 @@ func is_gravity_source(pos: Vector2i) -> bool:
 	return false
 
 
-## True while GRAVITY and `pos` is a pending landing cell (static layer must not draw final token yet).
+## True while GRAVITY / BOARD_OPENING and `pos` is a pending landing cell.
 func is_gravity_destination(pos: Vector2i) -> bool:
-	if phase != Phase.GRAVITY:
+	if phase != Phase.GRAVITY and phase != Phase.BOARD_OPENING:
 		return false
 	for item in gravity_moves:
 		var mv: GravityMoveTrace = item
@@ -227,13 +289,12 @@ func is_spawn_target(pos: Vector2i) -> bool:
 
 ## Legacy cell-offset helper (tests / diagnostics). Prefer geometry lerp in draw.
 func gravity_draw_offset(pos: Vector2i, cell_size: float) -> Vector2:
-	if phase != Phase.GRAVITY or gravity_moves.is_empty():
+	if (phase != Phase.GRAVITY and phase != Phase.BOARD_OPENING) or gravity_moves.is_empty():
 		return Vector2.ZERO
 	var eased := gravity_eased_progress()
 	for item in gravity_moves:
 		var mv: GravityMoveTrace = item
 		if mv.from_cell() == pos:
-			# Downward only; no overshoot — eased in [0,1].
 			var delta := Vector2(mv.to_cell() - mv.from_cell()) * cell_size * eased
 			return delta
 	return Vector2.ZERO
