@@ -13,7 +13,8 @@
 | **R-F** | Minimal Puzzle UI / Android touch / playable Score Attack / Dual Timer — **MERGED** (#16) |
 | **Gate 1** | **PASS WITH FINDINGS** (human device eval; not market proof) |
 | **R-G** | Minimal ROCK Obstacle vertical slice — **COMPLETE** (#17) |
-| **Gate 2** | NOT STARTED — OFF vs ROCK comparison after R-G |
+| **Gate 2-A** | Game modes / Obstacle progression / evaluation contract — **docs** ([`GATE2_GAME_DESIGN.md`](GATE2_GAME_DESIGN.md)) |
+| **Gate 2-B** | Live paired-seed ROCK eval (OFF / R2 / R3 / R4) — **NOT STARTED** |
 | Post R-F | Legacy Block Placement deletion decision |
 | Post Gate 2 | LOCK / SLIME / Rescue (not before) |
 
@@ -87,7 +88,7 @@ Exclusions at cell `(x,y)`:
 - If `x >= 2` and `board[x-1,y] == board[x-2,y]` (both orbs): exclude that type
 - If `y >= 2` and `board[x,y-1] == board[x,y-2]` (both orbs): exclude that type
 
-Fail-closed if candidates empty (no whole-board unbounded retry).  
+Fail-closed if candidates empty (no whole-board unbounded retry).
 No cascade cleanup. No score.
 
 DEV verification target: **6×6 / 5 OrbType** → no horizontal/vertical ≥3 after fill.
@@ -255,7 +256,7 @@ ERROR (not stable success):
 - detect / clear / gravity / refill failure
 - cascade guard exceeded (`is_guard_exceeded() == true`, `is_valid() == false`)
 
-Invalid inputs are rejected **before** the first detect (no mutation, no RNG).  
+Invalid inputs are rejected **before** the first detect (no mutation, no RNG).
 Mid-cascade ERROR does **not** roll back prior steps; the board is not treated as safely continuable.
 
 ### Out of R-D scope
@@ -529,9 +530,9 @@ Hypothesis only — do **not** add `ObstacleType.SLIME` / GDScript / tests in R-
   Gravity/Refill/Respawn, 58～60fps, crashなし
 - Tests: **248 PASS**
 - Prerelease: `phase-rg-boardwide-rock-test-67bd68c`
-- **Gate 2 NOT STARTED**
+- Gate 2 product/eval contract: **Gate 2-A** — [`GATE2_GAME_DESIGN.md`](GATE2_GAME_DESIGN.md); **Gate 2-B NOT STARTED**
 - Note for Gate 2 / Score redesign: long cascade presentation consumes Score Attack time by design (after GO)
-- Do **not** start LOCK / SLIME / Rescue before Gate 2
+- Do **not** start LOCK / SLIME / Rescue before Gate 2 ends
 - ROCK = 製品標準候補; Obstacle OFF = DEV / QA / Gate baseline
 
 ### Out of R-G scope
