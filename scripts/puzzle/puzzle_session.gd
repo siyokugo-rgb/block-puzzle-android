@@ -25,9 +25,9 @@ enum ObstacleMode {
 	ROCK,
 }
 
-## Gate 2 DEV target live ROCK count (initial + respawn toward this).
+## Gate 2 DEV target live ROCK count (R-G baseline default = 3).
 const TARGET_ROCK_COUNT := 3
-## Initial ROCK count at START (top-row unique columns via Obstacle RNG).
+## Initial ROCK count at START (R-G baseline default = 3; board-wide via Obstacle RNG).
 const INITIAL_ROCK_COUNT := 3
 
 ## Obstacle RNG seed derivation (independent of OrbGenerator stream).
@@ -43,31 +43,48 @@ var _route: DragRoute = null
 var _remaining_ms: int = 0
 var _move_remaining_ms: int = 0
 var _score: int = 0
+var _resolved_move_count: int = 0
+var _rock_break_count: int = 0
 var _max_cascade_steps: int = CascadeResolver.MAX_CASCADE_STEPS
 var _expiry_handled: bool = false
 var _last_end_reason: String = ""
 var _obstacle_mode: ObstacleMode = ObstacleMode.OFF
+var _initial_rock_count_config: int = 0
+var _target_rock_count: int = 0
 var _pending_rock_respawns: int = 0
 var _respawn_armed: bool = false
 var _session_seed: int = 0
 var _last_move_result: SessionMoveResult = null
-## Sorted top-row ROCK positions chosen at START (empty when OFF).
+## Sorted board-wide ROCK positions chosen at START (empty when OFF).
 var _initial_rock_positions: Array[Vector2i] = []
 
 
 ## Create a Score Attack session. Uses one OrbGenerator for fill + later cascade refill.
 ## Optional max_cascade_steps is an internal safety seam (default 128); not a gameplay flag.
 ## obstacle_mode: OFF = DEV/QA/Gate baseline; ROCK = board-wide seeded random rocks after stable fill.
+## initial_rock_count / target_rock_count: Gate 2-B pressure seam (defaults = R-G baseline 3/3).
+## OFF ignores count args for gameplay; read APIs report 0/0.
 static func create_score_attack(
 	width: int,
 	height: int,
 	seed_value: int,
 	duration_ms: int,
 	max_cascade_steps: int = CascadeResolver.MAX_CASCADE_STEPS,
-	obstacle_mode: int = ObstacleMode.OFF
+	obstacle_mode: int = ObstacleMode.OFF,
+	initial_rock_count: int = INITIAL_ROCK_COUNT,
+	target_rock_count: int = TARGET_ROCK_COUNT
 ) -> PuzzleSession:
 	var session := PuzzleSession.new()
-	session._build(width, height, seed_value, duration_ms, max_cascade_steps, obstacle_mode)
+	session._build(
+		width,
+		height,
+		seed_value,
+		duration_ms,
+		max_cascade_steps,
+		obstacle_mode,
+		initial_rock_count,
+		target_rock_count
+	)
 	return session
 
 
@@ -77,7 +94,9 @@ func _build(
 	seed_value: int,
 	duration_ms: int,
 	max_cascade_steps: int,
-	obstacle_mode: int
+	obstacle_mode: int,
+	initial_rock_count: int,
+	target_rock_count: int
 ) -> void:
 	_state = State.INVALID
 	_board = null
@@ -87,10 +106,14 @@ func _build(
 	_remaining_ms = 0
 	_move_remaining_ms = 0
 	_score = 0
+	_resolved_move_count = 0
+	_rock_break_count = 0
 	_max_cascade_steps = max_cascade_steps
 	_expiry_handled = false
 	_last_end_reason = ""
 	_obstacle_mode = ObstacleMode.OFF
+	_initial_rock_count_config = 0
+	_target_rock_count = 0
 	_pending_rock_respawns = 0
 	_respawn_armed = false
 	_session_seed = seed_value
@@ -105,6 +128,17 @@ func _build(
 		return
 	if obstacle_mode != ObstacleMode.OFF and obstacle_mode != ObstacleMode.ROCK:
 		return
+
+	var cells := width * height
+	var effective_initial := 0
+	var effective_target := 0
+	if obstacle_mode == ObstacleMode.ROCK:
+		if initial_rock_count < 1 or target_rock_count < 1:
+			return
+		if initial_rock_count > cells or target_rock_count > cells:
+			return
+		effective_initial = initial_rock_count
+		effective_target = target_rock_count
 
 	var board := PuzzleBoard.create(width, height)
 	if not board.is_valid():
@@ -126,7 +160,7 @@ func _build(
 	var initial_rocks: Array[Vector2i] = []
 
 	if obstacle_mode == ObstacleMode.ROCK:
-		initial_rocks = _place_initial_rocks(board, obstacle_rng, INITIAL_ROCK_COUNT)
+		initial_rocks = _place_initial_rocks(board, obstacle_rng, effective_initial)
 		if initial_rocks.is_empty():
 			return
 		# Replacing orbs with ROCK cannot create matches (ROCK has no orb).
@@ -139,7 +173,11 @@ func _build(
 	_remaining_ms = duration_ms
 	_move_remaining_ms = 0
 	_score = 0
+	_resolved_move_count = 0
+	_rock_break_count = 0
 	_obstacle_mode = obstacle_mode as ObstacleMode
+	_initial_rock_count_config = effective_initial
+	_target_rock_count = effective_target
 	_pending_rock_respawns = 0
 	_respawn_armed = false
 	_obstacle_rng = obstacle_rng
@@ -291,7 +329,7 @@ func session_seed() -> int:
 	return _session_seed
 
 
-## Defensive copy of START-time top-row ROCK positions (sorted by x). Empty when OFF.
+## Defensive copy of START-time ROCK positions (sorted y then x). Empty when OFF.
 func initial_rock_positions() -> Array[Vector2i]:
 	var out: Array[Vector2i] = []
 	for pos in _initial_rock_positions:
@@ -301,6 +339,26 @@ func initial_rock_positions() -> Array[Vector2i]:
 
 func obstacle_mode() -> ObstacleMode:
 	return _obstacle_mode
+
+
+## Configured initial ROCK count for this session (0 when OFF).
+func initial_rock_count_config() -> int:
+	return _initial_rock_count_config
+
+
+## Configured respawn target ROCK count for this session (0 when OFF).
+func target_rock_count() -> int:
+	return _target_rock_count
+
+
+## Successful resolved moves this session (swap_count >= 1 + stable resolve + score commit).
+func resolved_move_count() -> int:
+	return _resolved_move_count
+
+
+## Cumulative ROCK destroys this session (cascade.total_rocks_destroyed sum).
+func rock_break_count() -> int:
+	return _rock_break_count
 
 
 func rock_count() -> int:
@@ -528,13 +586,16 @@ func _resolve_after_release(force_session_over: bool) -> SessionMoveResult:
 		return SessionMoveResult.failed(_score)
 
 	_score = committed["value"]
+	_resolved_move_count += 1
+	var destroyed := cascade.total_rocks_destroyed()
+	if destroyed > 0:
+		_rock_break_count += destroyed
 	var session_over := force_session_over or _remaining_ms == 0
 	var spawns: Array = []
 	if not session_over and _obstacle_mode == ObstacleMode.ROCK:
-		spawns = _apply_rock_respawn_after_resolve(cascade.total_rocks_destroyed())
+		spawns = _apply_rock_respawn_after_resolve(destroyed)
 	elif session_over:
 		# No spawn after final move; keep pending for QA read but do not mutate board.
-		var destroyed := cascade.total_rocks_destroyed()
 		if destroyed > 0:
 			_pending_rock_respawns += destroyed
 		_respawn_armed = false
@@ -565,15 +626,15 @@ func _apply_rock_respawn_after_resolve(destroyed_this_move: int) -> Array:
 		_pending_rock_respawns = 0
 		_respawn_armed = false
 		return spawns
-	if _respawn_armed and _pending_rock_respawns > 0 and rock_count() < TARGET_ROCK_COUNT:
+	if _respawn_armed and _pending_rock_respawns > 0 and rock_count() < _target_rock_count:
 		var spawned := _try_spawn_one_rock()
 		if spawned != null:
 			spawns.append(spawned)
 			_pending_rock_respawns = maxi(0, _pending_rock_respawns - 1)
 	if destroyed_this_move > 0:
 		_pending_rock_respawns += destroyed_this_move
-	# Cap pending so we never plan more than needed to reach TARGET.
-	var deficit := maxi(0, TARGET_ROCK_COUNT - rock_count())
+	# Cap pending so we never plan more than needed to reach configured target.
+	var deficit := maxi(0, _target_rock_count - rock_count())
 	if _pending_rock_respawns > deficit:
 		_pending_rock_respawns = deficit
 	_respawn_armed = _pending_rock_respawns > 0
@@ -587,7 +648,7 @@ func _try_spawn_one_rock() -> RockSpawnTrace:
 		return null
 	if _obstacle_rng == null:
 		return null
-	if rock_count() >= TARGET_ROCK_COUNT:
+	if rock_count() >= _target_rock_count:
 		return null
 	var candidates: Array[Vector2i] = []
 	var y := 0

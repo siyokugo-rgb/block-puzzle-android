@@ -1,9 +1,9 @@
 # Phase 1-R — Route-Drag Match Puzzle Redesign
 
-**Status:** COMPLETE (docs / contracts only)  
-**Branch:** `cursor/phase1r-route-match-redesign-b8da`  
-**Base:** `main` @ `a5c1a339dc07f4296761f3a10b408c3b881ec6d3`  
-**Scope of this phase:** documentation and boundary freeze only. **No new puzzle domain implementation in 1-R.**  
+**Status:** COMPLETE (docs / contracts only)
+**Branch:** `cursor/phase1r-route-match-redesign-b8da`
+**Base:** `main` @ `a5c1a339dc07f4296761f3a10b408c3b881ec6d3`
+**Scope of this phase:** documentation and boundary freeze only. **No new puzzle domain implementation in 1-R.**
 **Do not start Phase R-A until this PR is accepted and merged (or explicitly greenlit).**
 
 ---
@@ -246,8 +246,8 @@ Refill during cascade is **not** required to be match-stable cell-by-cell (casca
 1. **Start:** press on a cell that contains a swappable orb (not empty; future obstacles may block entry — obstacle phase).
 2. **Step:** move into an **edge-adjacent** (4-dir) cell. **Revisit** of previously visited cells is **allowed**, including **immediate backtrack**.
 3. **Swap rule:** perform a swap **only when newly entering a cell** (cell identity changes). Pointer motion that stays inside the same cell (**jitter**) must **not** cause another swap.
-4. **Release:**  
-   - If ≥1 swap occurred: enter `RESOLVING` and run cascade. **No route rollback.**  
+4. **Release:**
+   - If ≥1 swap occurred: enter `RESOLVING` and run cascade. **No route rollback.**
    - If 0 swaps: return `IDLE` with no resolve.
 5. **UI preview** may show the route; domain SoT remains `DragRoute` + board after swaps.
 6. **Mouse** may share the same session APIs for editor testing; Android touch is the primary target.
@@ -335,7 +335,7 @@ repeat:
 When the timer reaches **0** while phase is `ROUTE_DRAG`:
 
 1. **Stop accepting new route steps** immediately (held finger cannot add further moves).
-2. If **≥1 swap** has already occurred on this route:  
+2. If **≥1 swap** has already occurred on this route:
    **forced release** of the current route (board stays as swapped — **no rollback**) → enter `RESOLVING` → run cascade to completion → if cascade is **stable success**, award provisional Score → then `SESSION_OVER`.
 3. If **0 swaps**: go directly to `SESSION_OVER` (no resolve).
 

@@ -412,6 +412,7 @@ func test_ready_launch_helpers_and_start_flow() -> void:
 	assert_eq(view.selected_duration_ms(), 45000)
 	# Selection alone still does not replace session.
 	assert_eq(view._session.remaining_ms(), 59000)
+	# Gate 2-B1: Restart/START force 60s protocol duration.
 	view.restart_selected_session()
 	assert_true(view.has_playable_session())
 	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.OPENING)
@@ -420,7 +421,7 @@ func test_ready_launch_helpers_and_start_flow() -> void:
 			break
 		view._process(0.05)
 	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.COUNTDOWN)
-	assert_eq(view._session.remaining_ms(), 45000)
+	assert_eq(view._session.remaining_ms(), 60000)
 	assert_eq(view._session.score(), 0)
 	assert_false(view._session.has_active_move_timer())
 	assert_eq(view._session.state(), PuzzleSession.State.IDLE)
@@ -428,6 +429,9 @@ func test_ready_launch_helpers_and_start_flow() -> void:
 	view.force_enter_running_for_tests()
 	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.RUNNING)
 	assert_true(view.board_input_enabled())
+	assert_eq(view._session.remaining_ms(), 60000)
+	# Explicit-seed helper still supports DEV duration compare (45s).
+	view.start_session_with_seed(PuzzleGameView.DEV_SEED, 45000)
 	assert_eq(view._session.remaining_ms(), 45000)
 
 

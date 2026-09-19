@@ -624,7 +624,7 @@ func test_trace_refill_matches_domain_generation() -> void:
 	_place_orb(board, 0, 0, OrbType.Id.ORB_2)
 	_place_orb(board, 1, 0, OrbType.Id.ORB_2)
 	_place_orb(board, 0, 1, OrbType.Id.ORB_2)
-	# Force clear of three → refill empties via resolve path after match on col? 
+	# Force clear of three → refill empties via resolve path after match on col?
 	# Simpler: call refill traced on empty cells.
 	var empty := _board(2, 1)
 	assert_true(empty.set_rock(Vector2i(0, 0)))
@@ -1443,12 +1443,13 @@ func test_countdown_3_2_1_go_starts_session_clock() -> void:
 
 
 func test_countdown_durations_go_full_value() -> void:
+	# Gate 2-B START locks 60s; explicit-seed helper still accepts DEV compare durations.
 	for dur in [45000, 60000, 90000]:
 		var view := PuzzleGameView.new()
 		add_child_autofree(view)
 		view.select_obstacle_mode(PuzzleSession.ObstacleMode.OFF)
 		view.select_duration(dur)
-		view.start_selected_session()
+		view.start_session_with_seed(PuzzleGameView.DEV_SEED, dur)
 		assert_eq(view._session.remaining_ms(), dur)
 		for _i in range(40):
 			if view.start_phase() != PuzzleGameView.StartPhase.OPENING:
@@ -1824,41 +1825,36 @@ func test_opening_off_has_board_settle_no_rocks() -> void:
 
 
 func test_restart_uses_new_session_seed() -> void:
+	# Gate 2-B1: START/Restart reuse selected paired seed (protocol).
+	# Random uniqueness remains covered by test_next_session_seed_avoids_duplicate_and_stays_in_range.
 	var view := PuzzleGameView.new()
 	add_child_autofree(view)
-	view.select_obstacle_mode(PuzzleSession.ObstacleMode.ROCK)
+	view.select_gate2_condition(PuzzleGameView.Gate2Condition.ROCK3)
+	view.select_gate2_seed_index(0)
 	view.start_selected_session()
 	var seed_a := view._session.session_seed()
+	assert_eq(seed_a, PuzzleGameView.GATE2_SEEDS[0])
 	assert_eq(view.current_session_seed(), seed_a)
-	assert_gte(seed_a, PuzzleGameView.SESSION_SEED_MIN)
-	assert_lte(seed_a, PuzzleGameView.SESSION_SEED_MAX)
-	# Drain opening into COUNTDOWN.
 	for _i in range(40):
 		if view.start_phase() != PuzzleGameView.StartPhase.OPENING:
 			break
 		view._process(0.05)
 	view.restart_selected_session()
 	var seed_b := view._session.session_seed()
-	assert_ne(seed_b, seed_a)
+	assert_eq(seed_b, seed_a)
 	assert_eq(view.current_session_seed(), seed_b)
 	assert_eq(view.start_phase(), PuzzleGameView.StartPhase.OPENING)
 	assert_eq(view._session.remaining_ms(), 60000)
 	assert_eq(view._session.rock_count(), 3)
-	# Adjacent Restart again differs from previous.
-	for _i in range(40):
-		if view.start_phase() != PuzzleGameView.StartPhase.OPENING:
-			break
-		view._process(0.05)
-	view.restart_selected_session()
-	var seed_c := view._session.session_seed()
-	assert_ne(seed_c, seed_b)
-	assert_eq(view._session.session_seed(), view.current_session_seed())
+	assert_eq(view._session.initial_rock_count_config(), 3)
+	assert_eq(view._session.target_rock_count(), 3)
 
 
 func test_explicit_seed_reproducible_and_hud() -> void:
 	var view := PuzzleGameView.new()
 	add_child_autofree(view)
-	assert_true(view._seed_label.text.contains("RANDOM"))
+	assert_true(view._seed_label.text.contains("Gate2 Seed"))
+	assert_true(view._seed_label.text.contains(str(PuzzleGameView.GATE2_SEEDS[0])))
 	assert_false(view._seed_label.text.contains("seed=42"))
 	view.select_obstacle_mode(PuzzleSession.ObstacleMode.ROCK)
 	view.start_session_with_seed(PuzzleGameView.DEV_SEED)
