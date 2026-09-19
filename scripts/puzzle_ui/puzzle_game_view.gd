@@ -1,17 +1,20 @@
 class_name PuzzleGameView
 extends Control
 
-## Phase R-F/R-G: minimal Score Attack view. PuzzleSession is the only game-state SoT.
+## Phase R-F/R-G / Gate 2-B1: minimal Score Attack view. PuzzleSession is the only game-state SoT.
 ## Pre-session READY is UI-only (no PuzzleSession.State.READY). Session starts on START/Restart.
 ## Pre-game (OPENING + COUNTDOWN) freezes Session Timer; gameplay presentation keeps it live.
-## Normal START/Restart pick a new Session seed; PuzzleSession remains deterministic for a given seed.
+## Gate 2-B1 DEV harness: paired-seed START uses fixed S1–S5 + OFF/R2/R3/R4 (not random seed).
+## Random Session seed helpers remain for normal-play restoration; not used by Gate2 START.
 
-## Fixed seed for tests / Gate comparison / bug reproduction (not normal play).
+## Fixed seed for tests / Gate comparison / bug reproduction (not Gate 2-B schedule).
 const DEV_SEED := 42
 const DEV_WIDTH := 6
 const DEV_HEIGHT := 6
 const DURATIONS_MS: Array[int] = [45000, 60000, 90000]
 const DEFAULT_DURATION_MS := 60000
+## Gate 2-B comparison locks Session to 60s (protocol).
+const GATE2_DURATION_MS := DEFAULT_DURATION_MS
 ## Gameplay render upper target (matches project.godot application/run/max_fps).
 const TARGET_FPS := 60
 ## DEV-only FPS overlay (not production UI).
@@ -22,10 +25,22 @@ const PRESTART_COUNTDOWN_MS := 3000.0
 const COUNTDOWN_DIGIT_MS := 1000.0
 ## Non-blocking GO overlay after countdown; Session/input already live.
 const GO_OVERLAY_MS := 400.0
-## Normal-play Session seed range (positive int; QA-friendly).
+## Normal-play Session seed range (positive int; QA-friendly). Kept; Gate2 START does not use it.
 const SESSION_SEED_MIN := 1
 const SESSION_SEED_MAX := 2147483647
 const MAX_SEED_RETRY := 4
+
+## Gate 2-B fixed paired seeds (do not swap after adoption).
+const GATE2_SEEDS: Array[int] = [104729, 130363, 196613, 262147, 524287]
+const GATE2_SEED_LABELS: Array[String] = ["S1", "S2", "S3", "S4", "S5"]
+
+## Gate 2-B pressure conditions (DEV compare only; not production DifficultyProfile).
+enum Gate2Condition {
+	OFF,
+	ROCK2,
+	ROCK3,
+	ROCK4,
+}
 
 enum StartPhase {
 	READY,
@@ -39,8 +54,10 @@ var _mapper := GridInputMapper.new()
 var _geometry: BoardGeometry = null
 var _elapsed_accumulator_ms: float = 0.0
 var _app_active: bool = true
-var _duration_ms: int = DEFAULT_DURATION_MS
+var _duration_ms: int = GATE2_DURATION_MS
 var _obstacle_mode: int = PuzzleSession.ObstacleMode.ROCK
+var _gate2_condition: int = Gate2Condition.ROCK3
+var _gate2_seed_index: int = 0
 var _last_move_note: String = ""
 var _skip_timer_frames: int = 2
 ## After startup/focus, drop one abnormal first-frame spike (>1s). Normal play has no cap.
@@ -48,7 +65,7 @@ var _drop_transition_spike: bool = true
 var _start_phase: int = StartPhase.READY
 var _countdown_elapsed_ms: float = 0.0
 var _go_overlay_remaining_ms: float = 0.0
-## Normal-play seed source (independent of domain Orb/Obstacle RNG).
+## Normal-play seed source (independent of domain Orb/Obstacle RNG). Not used by Gate2 START.
 var _session_seed_rng := RandomNumberGenerator.new()
 var _current_session_seed: int = 0
 var _hud: VBoxContainer = null
@@ -59,10 +76,13 @@ var _rock_label: Label = null
 var _state_label: Label = null
 var _note_label: Label = null
 var _seed_label: Label = null
+var _gate2_label: Label = null
 var _duration_row: HBoxContainer = null
 var _duration_buttons: Dictionary = {} # ms -> Button
 var _obstacle_row: HBoxContainer = null
-var _obstacle_buttons: Dictionary = {} # mode -> Button
+var _obstacle_buttons: Dictionary = {} # Gate2Condition -> Button
+var _seed_row: HBoxContainer = null
+var _seed_buttons: Dictionary = {} # index -> Button
 var _start_button: Button = null
 var _restart_button: Button = null
 var _board_area: Control = null
@@ -78,6 +98,7 @@ func _ready() -> void:
 	# Reinforce project.godot run/max_fps (Godot 4.7 Engine.max_fps).
 	Engine.max_fps = TARGET_FPS
 	_session_seed_rng.randomize()
+	_duration_ms = GATE2_DURATION_MS
 	_build_hud()
 	_enter_ready()
 	set_process(true)
@@ -88,12 +109,86 @@ func selected_obstacle_mode() -> int:
 	return _obstacle_mode
 
 
+func selected_gate2_condition() -> int:
+	return _gate2_condition
+
+
+func selected_gate2_seed() -> int:
+	return GATE2_SEEDS[_gate2_seed_index]
+
+
+func selected_gate2_seed_index() -> int:
+	return _gate2_seed_index
+
+
 func select_obstacle_mode(mode: int) -> void:
-	if mode != PuzzleSession.ObstacleMode.OFF and mode != PuzzleSession.ObstacleMode.ROCK:
+	# Legacy helper: OFF or ROCK (= ROCK3 baseline). Prefer select_gate2_condition.
+	if mode == PuzzleSession.ObstacleMode.OFF:
+		select_gate2_condition(Gate2Condition.OFF)
+	elif mode == PuzzleSession.ObstacleMode.ROCK:
+		select_gate2_condition(Gate2Condition.ROCK3)
+
+
+func select_gate2_condition(condition: int) -> void:
+	# Selection stored for next START/Restart. UI buttons are disabled mid-play.
+	if (
+		condition != Gate2Condition.OFF
+		and condition != Gate2Condition.ROCK2
+		and condition != Gate2Condition.ROCK3
+		and condition != Gate2Condition.ROCK4
+	):
 		return
-	_obstacle_mode = mode
+	_gate2_condition = condition
+	_obstacle_mode = (
+		PuzzleSession.ObstacleMode.OFF
+		if condition == Gate2Condition.OFF
+		else PuzzleSession.ObstacleMode.ROCK
+	)
 	_refresh_obstacle_buttons()
+	_refresh_gate2_label()
 	_refresh_hud()
+
+
+func select_gate2_seed_index(index: int) -> void:
+	# Selection stored for next START/Restart. UI buttons are disabled mid-play.
+	if index < 0 or index >= GATE2_SEEDS.size():
+		return
+	_gate2_seed_index = index
+	_refresh_seed_buttons()
+	_refresh_gate2_label()
+	_refresh_seed_label()
+	_refresh_hud()
+
+
+func gate2_initial_rock_count() -> int:
+	match _gate2_condition:
+		Gate2Condition.ROCK2:
+			return 2
+		Gate2Condition.ROCK3:
+			return 3
+		Gate2Condition.ROCK4:
+			return 4
+		_:
+			return 0
+
+
+func gate2_target_rock_count() -> int:
+	return gate2_initial_rock_count()
+
+
+func gate2_condition_label(condition: int = -1) -> String:
+	var c := _gate2_condition if condition < 0 else condition
+	match c:
+		Gate2Condition.OFF:
+			return "OFF"
+		Gate2Condition.ROCK2:
+			return "ROCK2"
+		Gate2Condition.ROCK3:
+			return "ROCK3"
+		Gate2Condition.ROCK4:
+			return "ROCK4"
+		_:
+			return "?"
 
 
 func _notification(what: int) -> void:
@@ -120,6 +215,8 @@ func selected_duration_ms() -> int:
 
 
 func select_duration(ms: int) -> void:
+	# Programmatic / legacy DEV helper still accepts 45/60/90.
+	# Gate2 START/Restart always forces GATE2_DURATION_MS (protocol).
 	if not DURATIONS_MS.has(ms):
 		return
 	_duration_ms = ms
@@ -128,16 +225,19 @@ func select_duration(ms: int) -> void:
 
 
 func start_selected_session() -> void:
-	_start_session(_duration_ms, _next_session_seed())
+	# Gate 2-B1: START uses selected paired seed (not random Session seed).
+	_start_session(GATE2_DURATION_MS, selected_gate2_seed())
 
 
 func restart_selected_session() -> void:
-	_start_session(_duration_ms, _next_session_seed())
+	# Restart repeats the same Gate2 seed+condition (paired trial replay).
+	_start_session(GATE2_DURATION_MS, selected_gate2_seed())
 
 
-## Explicit seed for tests / Gate 2 / bug reproduction. Not used by normal START/Restart.
+## Explicit seed for tests / Gate 2 / bug reproduction.
+## Gate2 condition/count still apply from current READY selection.
 func start_session_with_seed(seed: int, duration_ms: int = -1) -> void:
-	var dur := _duration_ms if duration_ms < 0 else duration_ms
+	var dur := GATE2_DURATION_MS if duration_ms < 0 else duration_ms
 	_start_session(dur, seed)
 
 
@@ -267,21 +367,40 @@ func _build_hud() -> void:
 		_duration_row.add_child(btn)
 		_duration_buttons[ms] = btn
 
+	_gate2_label = Label.new()
+	_gate2_label.name = "Gate2Label"
+	_gate2_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_gate2_label.add_theme_font_size_override("font_size", 13)
+	_hud.add_child(_gate2_label)
+
 	_obstacle_row = HBoxContainer.new()
 	_obstacle_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	_obstacle_row.add_theme_constant_override("separation", 8)
+	_obstacle_row.add_theme_constant_override("separation", 6)
 	_hud.add_child(_obstacle_row)
 	_obstacle_buttons.clear()
-	var off_btn := Button.new()
-	off_btn.text = "Obstacle OFF"
-	off_btn.pressed.connect(_on_obstacle_pressed.bind(PuzzleSession.ObstacleMode.OFF))
-	_obstacle_row.add_child(off_btn)
-	_obstacle_buttons[PuzzleSession.ObstacleMode.OFF] = off_btn
-	var rock_btn := Button.new()
-	rock_btn.text = "ROCK"
-	rock_btn.pressed.connect(_on_obstacle_pressed.bind(PuzzleSession.ObstacleMode.ROCK))
-	_obstacle_row.add_child(rock_btn)
-	_obstacle_buttons[PuzzleSession.ObstacleMode.ROCK] = rock_btn
+	for condition in [
+		Gate2Condition.OFF,
+		Gate2Condition.ROCK2,
+		Gate2Condition.ROCK3,
+		Gate2Condition.ROCK4,
+	]:
+		var cbtn := Button.new()
+		cbtn.text = gate2_condition_label(condition)
+		cbtn.pressed.connect(_on_gate2_condition_pressed.bind(condition))
+		_obstacle_row.add_child(cbtn)
+		_obstacle_buttons[condition] = cbtn
+
+	_seed_row = HBoxContainer.new()
+	_seed_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_seed_row.add_theme_constant_override("separation", 6)
+	_hud.add_child(_seed_row)
+	_seed_buttons.clear()
+	for i in range(GATE2_SEEDS.size()):
+		var sbtn := Button.new()
+		sbtn.text = GATE2_SEED_LABELS[i]
+		sbtn.pressed.connect(_on_gate2_seed_pressed.bind(i))
+		_seed_row.add_child(sbtn)
+		_seed_buttons[i] = sbtn
 
 	_start_button = Button.new()
 	_start_button.text = "START"
@@ -299,7 +418,11 @@ func _build_hud() -> void:
 	_seed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_seed_label.add_theme_font_size_override("font_size", 12)
 	_hud.add_child(_seed_label)
+	_refresh_gate2_label()
 	_refresh_seed_label()
+	_refresh_obstacle_buttons()
+	_refresh_seed_buttons()
+	_refresh_duration_buttons()
 
 	_board_area = Control.new()
 	_board_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -346,12 +469,15 @@ func _enter_ready() -> void:
 	_start_phase = StartPhase.READY
 	_countdown_elapsed_ms = 0.0
 	_go_overlay_remaining_ms = 0.0
+	_duration_ms = GATE2_DURATION_MS
 	if _presenter != null:
 		_presenter.busy = false
 		_presenter.phase = ResolutionPresenter.Phase.IDLE
 	_update_countdown_overlay()
 	_refresh_duration_buttons()
 	_refresh_obstacle_buttons()
+	_refresh_seed_buttons()
+	_refresh_gate2_label()
 	_refresh_action_buttons()
 	_refresh_seed_label()
 	_refresh_hud()
@@ -364,8 +490,16 @@ func _on_duration_pressed(ms: int) -> void:
 
 
 func _on_obstacle_pressed(mode: int) -> void:
-	# Selection only — never auto-starts a session.
+	# Legacy path → Gate2 condition.
 	select_obstacle_mode(mode)
+
+
+func _on_gate2_condition_pressed(condition: int) -> void:
+	select_gate2_condition(condition)
+
+
+func _on_gate2_seed_pressed(index: int) -> void:
+	select_gate2_seed_index(index)
 
 
 func _on_start_pressed() -> void:
@@ -382,13 +516,17 @@ func _on_restart_pressed() -> void:
 func _start_session(duration_ms: int, session_seed: int) -> void:
 	_duration_ms = duration_ms
 	_current_session_seed = session_seed
+	var initial_n := gate2_initial_rock_count()
+	var target_n := gate2_target_rock_count()
 	_session = PuzzleSession.create_score_attack(
 		DEV_WIDTH,
 		DEV_HEIGHT,
 		session_seed,
 		duration_ms,
 		CascadeResolver.MAX_CASCADE_STEPS,
-		_obstacle_mode
+		_obstacle_mode,
+		initial_n if _obstacle_mode == PuzzleSession.ObstacleMode.ROCK else PuzzleSession.INITIAL_ROCK_COUNT,
+		target_n if _obstacle_mode == PuzzleSession.ObstacleMode.ROCK else PuzzleSession.TARGET_ROCK_COUNT
 	)
 	_mapper.clear()
 	_elapsed_accumulator_ms = 0.0
@@ -402,6 +540,8 @@ func _start_session(duration_ms: int, session_seed: int) -> void:
 		_presenter.phase = ResolutionPresenter.Phase.IDLE
 	_refresh_duration_buttons()
 	_refresh_obstacle_buttons()
+	_refresh_seed_buttons()
+	_refresh_gate2_label()
 	_refresh_action_buttons()
 	_refresh_seed_label()
 	# Pre-game: settle final board tokens from above (ROCK ON and OFF).
@@ -471,21 +611,42 @@ func _update_countdown_overlay() -> void:
 func _refresh_duration_buttons() -> void:
 	for ms in _duration_buttons.keys():
 		var btn: Button = _duration_buttons[ms]
-		var selected: bool = int(ms) == _duration_ms
+		var selected: bool = int(ms) == GATE2_DURATION_MS
 		btn.text = ("%ds ★" if selected else "%ds") % int(int(ms) / 1000)
-		btn.disabled = false
+		# Gate 2-B: only 60s selectable.
+		btn.disabled = int(ms) != GATE2_DURATION_MS
 
 
 func _refresh_obstacle_buttons() -> void:
-	for mode in _obstacle_buttons.keys():
-		var btn: Button = _obstacle_buttons[mode]
-		var selected: bool = int(mode) == _obstacle_mode
-		# OFF is DEV/QA/Gate baseline — not the product-standard mode.
-		if int(mode) == PuzzleSession.ObstacleMode.OFF:
-			btn.text = "Obstacle OFF (DEV) ★" if selected else "Obstacle OFF (DEV)"
-		else:
-			btn.text = "ROCK ★" if selected else "ROCK"
-		btn.disabled = false
+	for condition in _obstacle_buttons.keys():
+		var btn: Button = _obstacle_buttons[condition]
+		var selected: bool = int(condition) == _gate2_condition
+		var label := gate2_condition_label(int(condition))
+		btn.text = ("%s ★" if selected else "%s") % label
+		btn.disabled = not is_awaiting_start()
+
+
+func _refresh_seed_buttons() -> void:
+	if _seed_buttons.is_empty():
+		return
+	for index in _seed_buttons.keys():
+		var btn: Button = _seed_buttons[index]
+		var selected: bool = int(index) == _gate2_seed_index
+		var label: String = GATE2_SEED_LABELS[int(index)]
+		btn.text = ("%s ★" if selected else "%s") % label
+		btn.disabled = not is_awaiting_start()
+
+
+func _refresh_gate2_label() -> void:
+	if _gate2_label == null:
+		return
+	var seed_v := selected_gate2_seed()
+	var label: String = GATE2_SEED_LABELS[_gate2_seed_index]
+	_gate2_label.text = "Gate2 Condition: %s · Seed: %s (%d) · 60s · Multiplier: NONE" % [
+		gate2_condition_label(),
+		label,
+		seed_v,
+	]
 
 
 func _refresh_seed_label() -> void:
@@ -493,9 +654,13 @@ func _refresh_seed_label() -> void:
 		return
 	var move_s := float(PuzzleSession.MOVE_DURATION_MS) / 1000.0
 	if is_awaiting_start() or _session == null:
-		_seed_label.text = "DEV · Seed: RANDOM · 6×6 · Move %.1fs" % move_s
+		_seed_label.text = "DEV · Gate2 Seed: %s (%d) · 6×6 · Move %.1fs" % [
+			GATE2_SEED_LABELS[_gate2_seed_index],
+			selected_gate2_seed(),
+			move_s,
+		]
 	else:
-		_seed_label.text = "DEV · Seed: %d · 6×6 · Move %.1fs" % [
+		_seed_label.text = "DEV · Seed: %d · 6×6 · Move %.1fs · Multiplier: NONE" % [
 			_session.session_seed(),
 			move_s,
 		]
@@ -767,18 +932,21 @@ func _refresh_hud() -> void:
 		_session_timer_label.text = "Session: ---"
 		_move_timer_label.text = "Move: ---"
 		if _rock_label != null:
+			var n := gate2_initial_rock_count()
 			_rock_label.text = (
-				"ROCK: --- (ON at START)"
-				if _obstacle_mode == PuzzleSession.ObstacleMode.ROCK
-				else "ROCK: OFF (DEV baseline)"
+				"ROCK: --- (OFF)"
+				if _gate2_condition == Gate2Condition.OFF
+				else "ROCK: --- (%s %d/%d at START)" % [gate2_condition_label(), n, n]
 			)
 		_state_label.text = "State: READY"
-		_note_label.text = "READY — Pick duration / Obstacle and press START"
+		_note_label.text = "READY — Gate2 Condition / Seed · 60s · START"
+		_refresh_gate2_label()
 		_refresh_seed_label()
 		_refresh_action_buttons()
 		return
 	if _session == null:
 		return
+	_refresh_gate2_label()
 	_refresh_seed_label()
 	_score_label.text = "Score: %d" % _session.score()
 	var session_sec := float(_session.remaining_ms()) / 1000.0
@@ -790,7 +958,11 @@ func _refresh_hud() -> void:
 		_move_timer_label.text = "Move: ---"
 	if _rock_label != null:
 		if _session.obstacle_mode() == PuzzleSession.ObstacleMode.ROCK:
-			_rock_label.text = "ROCK: %d" % _session.rock_count()
+			_rock_label.text = "ROCK: %d (cfg %d/%d)" % [
+				_session.rock_count(),
+				_session.initial_rock_count_config(),
+				_session.target_rock_count(),
+			]
 		else:
 			_rock_label.text = "ROCK: OFF (DEV)"
 	match _start_phase:
@@ -814,7 +986,18 @@ func _refresh_hud() -> void:
 		note = "GO!"
 	# SESSION OVER banner waits until presentation finishes (expiry mid-anim is OK).
 	elif not is_presentation_busy() and _session.state() == PuzzleSession.State.SESSION_OVER:
-		note = "SESSION OVER — Score %d — Restart / pick 45·60·90" % _session.score()
+		note = (
+			"Gate2 Seed: %d · Condition: %s · Initial/Target: %d/%d · Raw Score: %d · Resolved Moves: %d · ROCK Breaks: %d · Multiplier: NONE"
+			% [
+				_session.session_seed(),
+				gate2_condition_label(),
+				_session.initial_rock_count_config(),
+				_session.target_rock_count(),
+				_session.score(),
+				_session.resolved_move_count(),
+				_session.rock_break_count(),
+			]
+		)
 	elif _session.state() == PuzzleSession.State.ERROR:
 		note = "ERROR — input blocked"
 	_note_label.text = note

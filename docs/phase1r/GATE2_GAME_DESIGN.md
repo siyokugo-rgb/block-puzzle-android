@@ -1,9 +1,11 @@
 # Gate 2 — Game Modes, Obstacle Progression, Evaluation
 
 **Status:** Gate 2-A COMPLETE (docs / contracts only)
-**Base:** `main` @ `11da3c5616e3e2b0ad71d08d78c64a2edcb9bdc1` (R-G COMPLETE)
-**Scope of Gate 2-A:** documentation only. **No gameplay / Stage / Score / Obstacle code.**
-**Gate 2-B:** NOT STARTED (paired-seed live eval; OFF / ROCK2 / ROCK3 / ROCK4)
+**Base:** `main` @ `11da3c5616e3e2b0ad71d08d78c64a2edcb9bdc1` (R-G COMPLETE) — later merged as PR #18 → `8e39d28`
+**Scope of Gate 2-A:** documentation only. **No gameplay / Stage / Score / Obstacle code in 2-A.**
+**Gate 2-B1:** paired-seed ROCK pressure **DEV harness** (OFF / R2 / R3 / R4 · S1–S5) — see implementation branch; live 20-trial = Gate 2-B2
+**Gate 2-B2:** LIVE EVALUATION — **NOT STARTED**
+**Results template:** [`GATE2B_RESULTS.md`](GATE2B_RESULTS.md)
 **Market proof:** NOT CLAIMED — Gate 2 is design hypothesis / internal usability / tuning only.
 
 Related: [`IMPLEMENTATION_NOTES.md`](IMPLEMENTATION_NOTES.md) (R-G ROCK slice), [`SCORE_TIMER_CONTRACT.md`](SCORE_TIMER_CONTRACT.md).
@@ -311,8 +313,9 @@ Gate 2 is **not** market-success proof. User/self play ≠ market evidence.
 
 | Slice | Scope | Status |
 | --- | --- | --- |
-| **Gate 2-A** | Docs: modes, progression, risk/reward, ROCK baseline, **paired-seed eval protocol** | **COMPLETE** (this document) |
-| **Gate 2-B** | Live paired-seed play: OFF / ROCK2 / ROCK3 / ROCK4 | **NOT STARTED** |
+| **Gate 2-A** | Docs: modes, progression, risk/reward, ROCK baseline, **paired-seed eval protocol** | **COMPLETE** (this document; PR #18) |
+| **Gate 2-B1** | DEV harness: OFF/R2/R3/R4 · fixed S1–S5 · metrics · 60s lock | **VERIFY FIRST** until Android QA |
+| **Gate 2-B2** | Live 20-trial paired play (`GATE2B_RESULTS.md`) | **NOT STARTED** |
 
 ---
 
@@ -359,8 +362,27 @@ If trends are clear after 5 seeds, **do not** require 10. Gate 2 is an **interna
 
 ### 9A.3 Seed selection
 
-- Gate 2-B seeds are **explicit fixed integers**, recorded in docs/notes when Gate 2-B starts
-- Once a comparison set is adopted: **no cherry-picking / swapping seeds after seeing results**
+Gate 2-B **first comparison set** (fixed; no cherry-pick after adoption):
+
+| Id | Seed |
+| --- | --- |
+| S1 | **104729** |
+| S2 | **130363** |
+| S3 | **196613** |
+| S4 | **262147** |
+| S5 | **524287** |
+
+Condition order (fixed for B2; do not reorder after start):
+
+| Seed | Order |
+| --- | --- |
+| S1 | OFF → R2 → R3 → R4 |
+| S2 | R2 → R3 → R4 → OFF |
+| S3 | R3 → R4 → OFF → R2 |
+| S4 | R4 → OFF → R2 → R3 |
+| S5 | R2 → OFF → R4 → R3 |
+
+Trial rows: [`GATE2B_RESULTS.md`](GATE2B_RESULTS.md) (T01–T20).
 
 ### 9A.4 Fixed session variables (all conditions)
 
