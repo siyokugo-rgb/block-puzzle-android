@@ -14,7 +14,7 @@
 | **Gate 1** | **PASS WITH FINDINGS** (human device eval; not market proof) |
 | **R-G** | Minimal ROCK Obstacle vertical slice — **COMPLETE** (#17) |
 | **Gate 2-A** | Game modes / Obstacle progression / evaluation contract — **COMPLETE** ([`GATE2_GAME_DESIGN.md`](GATE2_GAME_DESIGN.md); PR #18) |
-| **Gate 2-B1** | Paired-seed ROCK pressure DEV harness — **VERIFY FIRST** |
+| **Gate 2-B1** | Paired-seed ROCK pressure DEV harness — **COMPLETE** (PR #19 `20faaca`) |
 | **Gate 2-B2** | Live 20-trial evaluation ([`GATE2B_RESULTS.md`](GATE2B_RESULTS.md)) — **NOT STARTED** |
 | Post R-F | Legacy Block Placement deletion decision |
 | Post Gate 2 | LOCK / SLIME / Rescue (not before) |
@@ -531,8 +531,8 @@ Hypothesis only — do **not** add `ObstacleType.SLIME` / GDScript / tests in R-
   Gravity/Refill/Respawn, 58～60fps, crashなし
 - Tests: **248 PASS**
 - Prerelease: `phase-rg-boardwide-rock-test-67bd68c`
-- Gate 2 product/eval contract: **Gate 2-A COMPLETE**; **Gate 2-B1** harness VERIFY FIRST; **Gate 2-B2 NOT STARTED**
-  — results template [`GATE2B_RESULTS.md`](GATE2B_RESULTS.md)
+- Gate 2 product/eval contract: **Gate 2-A COMPLETE**; **Gate 2-B1 COMPLETE** (PR #19); **Gate 2-B2 NOT STARTED**
+  — results template [`GATE2B_RESULTS.md`](GATE2B_RESULTS.md); eval APK `gate2b-rock-pressure-test-f327ee3`
 - Note for Gate 2 / Score redesign: long cascade presentation consumes Score Attack time by design (after GO)
 - Do **not** start LOCK / SLIME / Rescue before Gate 2 ends
 - ROCK = 製品標準候補; Obstacle OFF = DEV / QA / Gate baseline

@@ -33,7 +33,7 @@ Legacy Block Placement types remain on `main` until post–**R-F** cleanup. Phas
 | R-F Minimal Android playable Score Attack | COMPLETE |
 | R-G Minimal ROCK Obstacle vertical slice | COMPLETE — PR #17 merge-commit `635085f` |
 | Gate 2-A Game modes / Obstacle progression / eval contract | COMPLETE (docs) — PR #18 `8e39d28` |
-| Gate 2-B1 Paired-seed ROCK pressure DEV harness | VERIFY FIRST (this branch) |
+| Gate 2-B1 Paired-seed ROCK pressure DEV harness | COMPLETE — PR #19 merge-commit `20faaca`; Android PASS |
 | Gate 2-B2 Live 20-trial evaluation | NOT STARTED |
 
 Xperia was the **reference test device** for Phase 0-E. The implementation itself is **Android-generic** (no Sony/Xperia-only APIs or branches).

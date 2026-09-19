@@ -3,7 +3,7 @@
 **Status:** Gate 2-A COMPLETE (docs / contracts only)
 **Base:** `main` @ `11da3c5616e3e2b0ad71d08d78c64a2edcb9bdc1` (R-G COMPLETE) — later merged as PR #18 → `8e39d28`
 **Scope of Gate 2-A:** documentation only. **No gameplay / Stage / Score / Obstacle code in 2-A.**
-**Gate 2-B1:** paired-seed ROCK pressure **DEV harness** (OFF / R2 / R3 / R4 · S1–S5) — see implementation branch; live 20-trial = Gate 2-B2
+**Gate 2-B1:** paired-seed ROCK pressure DEV harness — **COMPLETE** (PR #19 `20faaca`; Android PASS; APK `gate2b-rock-pressure-test-f327ee3`)
 **Gate 2-B2:** LIVE EVALUATION — **NOT STARTED**
 **Results template:** [`GATE2B_RESULTS.md`](GATE2B_RESULTS.md)
 **Market proof:** NOT CLAIMED — Gate 2 is design hypothesis / internal usability / tuning only.
@@ -314,7 +314,7 @@ Gate 2 is **not** market-success proof. User/self play ≠ market evidence.
 | Slice | Scope | Status |
 | --- | --- | --- |
 | **Gate 2-A** | Docs: modes, progression, risk/reward, ROCK baseline, **paired-seed eval protocol** | **COMPLETE** (this document; PR #18) |
-| **Gate 2-B1** | DEV harness: OFF/R2/R3/R4 · fixed S1–S5 · metrics · 60s lock | **VERIFY FIRST** until Android QA |
+| **Gate 2-B1** | DEV harness: OFF/R2/R3/R4 · fixed S1–S5 · metrics · 60s lock | **COMPLETE** (PR #19; Android PASS) |
 | **Gate 2-B2** | Live 20-trial paired play (`GATE2B_RESULTS.md`) | **NOT STARTED** |
 
 ---

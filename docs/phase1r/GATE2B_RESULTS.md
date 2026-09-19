@@ -1,8 +1,8 @@
 # Gate 2-B Results Template
 
-**Status:** empty template — Gate 2-B2 LIVE EVALUATION NOT STARTED
+**Status:** empty template — Gate 2-B2 LIVE EVALUATION **NOT STARTED**
 **Protocol:** [`GATE2_GAME_DESIGN.md`](GATE2_GAME_DESIGN.md) §9A
-**Harness:** Gate 2-B1 DEV (OFF / ROCK2 / ROCK3 / ROCK4 · S1–S5)
+**Harness:** Gate 2-B1 **COMPLETE** (PR #19) — APK `gate2b-rock-pressure-test-f327ee3` @ `f327ee3`
 
 Do **not** swap seeds, condition order, or trial ids after adoption.
 
